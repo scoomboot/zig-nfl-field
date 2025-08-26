@@ -1,0 +1,52 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.#*
+\#*#
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Development files
+*.tmp
+*.log
+*.bak
+*.orig
+
+# Test artifacts
+test-results/
+coverage/
+
+# Node.js (if any tooling uses it)
+node_modules/
+npm-debug.log*
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Backup files
+*.backup
+*~

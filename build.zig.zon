@@ -1,0 +1,22 @@
+.{
+    .name = .zig_nfl_field,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0xa5e8893bb4336d6b,
+    
+    .dependencies = .{
+        // Zero-dependency library
+    },
+    
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "lib",
+        "benchmarks",
+        "docs",
+        "scripts",
+        "README.md",
+        "CLAUDE.md",
+        "LICENSE",
+    },
+}
