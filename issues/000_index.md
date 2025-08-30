@@ -13,7 +13,7 @@ Implement the foundational NFL field geometry and position tracking library foll
 - [x] ✅ [#005](005_initialize_git.md): Initialize git repository → *depends on: #001*
 
 ### Phase 1: Foundation - Coordinate System
-- [ ] 🟡 [#006](006_define_coordinate_constants.md): Define coordinate system constants → *depends on: #002*
+- [x] ✅ [#006](006_define_coordinate_constants.md): Define coordinate system constants → *depends on: #002*
 - [ ] 🟡 [#007](007_implement_coordinate_struct.md): Implement Coordinate struct → *depends on: #006*
 - [ ] 🟡 [#008](008_add_coordinate_validation.md): Add coordinate validation functions → *depends on: #007*
 - [ ] 🟡 [#009](009_create_coordinate_conversions.md): Create coordinate conversion utilities → *depends on: #007*

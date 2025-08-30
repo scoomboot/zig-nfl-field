@@ -5,10 +5,14 @@
 //
 // Vibe coded by Fisty.
 
-const std = @import("std");
-const field = @import("field");
-const time = std.time;
-const print = std.debug.print;
+// ╔══════════════════════════════════════ PACK ═══════════════════════════════════════════════════╗
+
+    const std = @import("std");
+    const field = @import("field");
+    const time = std.time;
+    const print = std.debug.print;
+
+// ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
 
 // ╔══════════════════════════════════════ BENCHMARK UTILITIES ══════════════════════════════════════╗
 
