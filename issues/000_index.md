@@ -12,10 +12,13 @@ Implement the foundational NFL field geometry and position tracking library foll
 - [x] ✅ [#004](004_setup_documentation.md): Setup documentation files → *depends on: #001*
 - [x] ✅ [#005](005_initialize_git.md): Initialize git repository → *depends on: #001*
 
+### 🔴 Critical Bug Fixes
+- [x] ✅ [#042](042_fix_coordinate_axis_inconsistency.md): Fix coordinate system axis inconsistency → *blocks: #008, #009*
+
 ### Phase 1: Foundation - Coordinate System
 - [x] ✅ [#006](006_define_coordinate_constants.md): Define coordinate system constants → *depends on: #002*
-- [ ] 🟡 [#007](007_implement_coordinate_struct.md): Implement Coordinate struct → *depends on: #006*
-- [ ] 🟡 [#008](008_add_coordinate_validation.md): Add coordinate validation functions → *depends on: #007*
+- [x] ✅ [#007](007_implement_coordinate_struct.md): Implement Coordinate struct → *depends on: #006*
+- [x] ✅ [#008](008_add_coordinate_validation.md): Add coordinate validation functions → *depends on: #007*
 - [ ] 🟡 [#009](009_create_coordinate_conversions.md): Create coordinate conversion utilities → *depends on: #007*
 
 ### Phase 2: Core Field Structure
@@ -59,6 +62,7 @@ Implement the foundational NFL field geometry and position tracking library foll
 - [ ] 🔵 [#037](037_test_external_integration.md): Test external project integration → *depends on: #036*
 
 ### Phase 8: Documentation & Examples
+- [ ] 🟡 [#043](043_create_missing_readme.md): Create missing README.md file → *package integrity*
 - [ ] 🔵 [#038](038_write_api_documentation.md): Write API documentation → *depends on: #037*
 - [ ] 🔵 [#039](039_create_usage_examples.md): Create usage examples → *depends on: #038*
 - [ ] 🔵 [#040](040_write_performance_guide.md): Write performance guidelines → *depends on: #038*

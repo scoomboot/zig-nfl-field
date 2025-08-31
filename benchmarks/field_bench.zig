@@ -5,16 +5,16 @@
 //
 // Vibe coded by Fisty.
 
-// ╔══════════════════════════════════════ PACK ═══════════════════════════════════════════════════╗
+// ╔═══ PACK ═══╗
 
     const std = @import("std");
     const field = @import("field");
     const time = std.time;
     const print = std.debug.print;
 
-// ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════╝
 
-// ╔══════════════════════════════════════ BENCHMARK UTILITIES ══════════════════════════════════════╗
+// ╔═══ BENCHMARK UTILITIES ═══╗
 
     /// Simple benchmark timer
     const BenchTimer = struct {
@@ -55,9 +55,9 @@
               .{name, elapsed, per_iter, iterations});
     }
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════════════════════╝
 
-// ╔══════════════════════════════════════ FIELD BENCHMARKS ═════════════════════════════════════════╗
+// ╔═══ FIELD BENCHMARKS ═══╗
 
     fn benchFieldInit() void {
         _ = field.Field.init();
@@ -65,7 +65,7 @@
     
     fn benchFieldContains() void {
         const f = field.Field.init();
-        _ = f.contains(60, 26.67);
+        _ = f.contains(26.67, 60);
     }
     
     fn benchFieldEndzoneChecks() void {
@@ -75,29 +75,28 @@
         _ = f.isInPlayingField(60);
     }
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+// ╚═════════════════════════╝
 
-// ╔══════════════════════════════════════ COORDINATE BENCHMARKS ════════════════════════════════════╗
+// ╔═══ COORDINATE BENCHMARKS ═══╗
 
     fn benchCoordinateInit() void {
-        _ = field.Coordinate.init(50.5, 26.67);
+        _ = field.Coordinate.init(26.67, 50.5);
     }
     
     fn benchCoordinateDistance() void {
         const c1 = field.Coordinate.init(0, 0);
-        const c2 = field.Coordinate.init(60, 26.67);
+        const c2 = field.Coordinate.init(26.67, 60);
         _ = c1.distanceTo(c2);
     }
     
     fn benchCoordinateValidation() void {
-        const f = field.Field.init();
-        const c = field.Coordinate.init(60, 26.67);
-        _ = c.isValid(f);
+        const c = field.Coordinate.init(26.67, 60);
+        _ = c.isValid();
     }
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════╝
 
-// ╔══════════════════════════════════════ MAIN ═════════════════════════════════════════════════════╗
+// ╔═══ MAIN ═══╗
 
     pub fn main() !void {
         print("\n=== NFL Field Module Benchmarks ===\n\n", .{});
@@ -121,9 +120,9 @@
         print("\n=== Benchmarks Complete ===\n\n", .{});
     }
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+// ╚═════════════╝
 
-// ╔══════════════════════════════════════ TESTS ════════════════════════════════════════════════════╗
+// ╔═══ TESTS ═══╗
 
     test "unit: BenchTimer: timer works correctly" {
         var timer = BenchTimer.init();
@@ -145,4 +144,4 @@
         benchCoordinateValidation();
     }
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════╝
