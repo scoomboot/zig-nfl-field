@@ -15,6 +15,7 @@ Implement the foundational NFL field geometry and position tracking library foll
 ### 🔴 Critical Bug Fixes
 - [x] ✅ [#042](042_fix_coordinate_axis_inconsistency.md): Fix coordinate system axis inconsistency → *blocks: #008, #009*
 - [x] ✅ [#044](044_fix_benchmark_compilation.md): Fix benchmark compilation errors → *depends on: #010*
+- [x] ✅ [#046](046_fix_containsarea_yaxis_logic.md): Fix containsArea() inverted Y-axis validation logic → *depends on: #012*
 
 ### Phase 1: Foundation - Coordinate System
 - [x] ✅ [#006](006_define_coordinate_constants.md): Define coordinate system constants → *depends on: #002*
@@ -24,9 +25,10 @@ Implement the foundational NFL field geometry and position tracking library foll
 
 ### Phase 2: Core Field Structure
 - [x] ✅ [#010](010_design_field_struct.md): Design Field struct layout → *depends on: #007*
-- [ ] 🟡 [#011](011_implement_field_init.md): Implement field initialization → *depends on: #010*
+- [x] ✅ [#011](011_implement_field_init.md): Implement field initialization → *depends on: #010*
 - [ ] 🟡 [#012](012_add_boundary_checking.md): Add field boundary checking → *depends on: #010*
 - [ ] 🟡 [#013](013_create_field_metadata.md): Create field metadata storage → *depends on: #010*
+- [ ] 🔵 [#045](045_add_fieldbuilder_endzone_config.md): Add setEndZoneLength() to FieldBuilder → *depends on: #011*
 
 ### Phase 3: Yard Lines & Hash Marks
 - [ ] 🟡 [#014](014_define_yardline_enum.md): Define YardLine enum → *depends on: #009*

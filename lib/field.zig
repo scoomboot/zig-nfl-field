@@ -133,11 +133,66 @@ const std = @import("std");
             };
         }
         
+        /// Initialize a field with custom dimensions
+        ///
+        /// __Parameters__
+        ///
+        /// - `allocator`: Memory allocator for dynamic operations
+        /// - `length`: Total field length including endzones in yards
+        /// - `width`: Field width in yards
+        /// - `end_zone_length`: Length of each endzone in yards
+        ///
+        /// __Return__
+        ///
+        /// - A Field struct with custom dimensions or FieldError.InvalidDimensions
+        pub fn initCustom(
+            allocator: std.mem.Allocator,
+            length: f32,
+            width: f32,
+            end_zone_length: f32
+        ) FieldError!Field {
+            // Validate dimensions are positive
+            if (length <= 0 or width <= 0 or end_zone_length <= 0) {
+                return FieldError.InvalidDimensions;
+            }
+            
+            // Validate endzones don't exceed field length
+            if (end_zone_length * 2 >= length) {
+                return FieldError.InvalidDimensions;
+            }
+            
+            // Calculate proportional hash marks at 28% and 72% of width
+            const hash_from_sideline = width * 0.28;
+            
+            return Field{
+                .allocator = allocator,
+                .length = length,
+                .width = width,
+                .endzone_length = end_zone_length,
+                .north_boundary = length,
+                .south_boundary = 0.0,
+                .east_boundary = width,
+                .west_boundary = 0.0,
+                .left_hash_x = hash_from_sideline,
+                .right_hash_x = width - hash_from_sideline,
+                .center_x = width / 2.0,
+            };
+        }
+        
         /// Deinitialize the field and free any allocated resources
         pub fn deinit(self: *Field) void {
             // Currently no dynamic allocations to free
             // This function exists for future extensibility
             _ = self;
+        }
+        
+        /// Reset the field to default NFL dimensions
+        ///
+        /// Preserves the allocator reference while resetting all dimensions
+        /// to standard NFL field values.
+        pub fn reset(self: *Field) void {
+            const allocator = self.allocator;
+            self.* = Field.init(allocator);
         }
         
         /// Check if a coordinate is within field boundaries
@@ -153,6 +208,185 @@ const std = @import("std");
         pub fn contains(self: Field, x: f32, y: f32) bool {
             return x >= 0 and x <= self.width and 
                    y >= 0 and y <= self.length;
+        }
+        
+        /// Check if a Coordinate struct is within field boundaries
+        ///
+        /// __Parameters__
+        ///
+        /// - `coord`: Coordinate struct to check
+        ///
+        /// __Return__
+        ///
+        /// - `true` if coordinate is within field boundaries, `false` otherwise
+        pub fn containsCoordinate(self: Field, coord: Coordinate) bool {
+            return self.contains(coord.x, coord.y);
+        }
+        
+        /// Check if a coordinate is within the playing field (excludes endzones)
+        ///
+        /// __Parameters__
+        ///
+        /// - `coord`: Coordinate to check
+        ///
+        /// __Return__
+        ///
+        /// - `true` if coordinate is in playing field (not in endzones), `false` otherwise
+        pub fn containsInPlay(self: Field, coord: Coordinate) bool {
+            return coord.x >= 0 and coord.x <= self.width and
+                   coord.y >= self.endzone_length and 
+                   coord.y <= (self.length - self.endzone_length);
+        }
+        
+        /// Check if a rectangular area is entirely within field boundaries
+        ///
+        /// __Parameters__
+        ///
+        /// - `top_left`: Top-left corner of the area
+        /// - `bottom_right`: Bottom-right corner of the area
+        ///
+        /// __Return__
+        ///
+        /// - `true` if entire area is within field boundaries, `false` otherwise
+        pub fn containsArea(self: Field, top_left: Coordinate, bottom_right: Coordinate) bool {
+            // Check both corners are within bounds
+            if (!self.containsCoordinate(top_left) or !self.containsCoordinate(bottom_right)) {
+                return false;
+            }
+            
+            // Validate area dimensions: bottom_right.x > top_left.x (east of) and top_left.y > bottom_right.y (north of)
+            if (bottom_right.x <= top_left.x or bottom_right.y >= top_left.y) {
+                return false;
+            }
+            
+            return true;
+        }
+        
+        /// Check if a line segment is entirely within field boundaries
+        ///
+        /// __Parameters__
+        ///
+        /// - `start`: Starting coordinate of the line
+        /// - `end`: Ending coordinate of the line
+        ///
+        /// __Return__
+        ///
+        /// - `true` if entire line is within field boundaries, `false` otherwise
+        pub fn containsLine(self: Field, start: Coordinate, end: Coordinate) bool {
+            // Check endpoints first
+            if (!self.containsCoordinate(start) or !self.containsCoordinate(end)) {
+                return false;
+            }
+            
+            // For a line to be contained, we need to check if it crosses boundaries
+            // Since the field is a rectangle, if both endpoints are inside,
+            // the entire line is inside (convex shape property)
+            return true;
+        }
+        
+        /// Get the type of boundary violation for a coordinate
+        ///
+        /// __Parameters__
+        ///
+        /// - `coord`: Coordinate to check
+        ///
+        /// __Return__
+        ///
+        /// - BoundaryViolation enum if coordinate is out of bounds, null if within bounds
+        pub fn getBoundaryViolation(self: Field, coord: Coordinate) ?BoundaryViolation {
+            // Check west boundary first
+            if (coord.x < self.west_boundary) {
+                return .west_out_of_bounds;
+            }
+            
+            // Check east boundary
+            if (coord.x > self.east_boundary) {
+                return .east_out_of_bounds;
+            }
+            
+            // Check south boundary
+            if (coord.y < self.south_boundary) {
+                return .south_out_of_bounds;
+            }
+            
+            // Check north boundary
+            if (coord.y > self.north_boundary) {
+                return .north_out_of_bounds;
+            }
+            
+            // Coordinate is within bounds
+            return null;
+        }
+        
+        /// Calculate minimum distance from coordinate to any field boundary
+        ///
+        /// __Parameters__
+        ///
+        /// - `coord`: Coordinate to measure from
+        ///
+        /// __Return__
+        ///
+        /// - Minimum distance to nearest boundary in yards (negative if outside)
+        pub fn distanceToBoundary(self: Field, coord: Coordinate) f32 {
+            // Calculate distances to each boundary
+            const dist_west = coord.x - self.west_boundary;
+            const dist_east = self.east_boundary - coord.x;
+            const dist_south = coord.y - self.south_boundary;
+            const dist_north = self.north_boundary - coord.y;
+            
+            // Find minimum distance (negative values indicate outside boundary)
+            var min_dist = dist_west;
+            min_dist = @min(min_dist, dist_east);
+            min_dist = @min(min_dist, dist_south);
+            min_dist = @min(min_dist, dist_north);
+            
+            return min_dist;
+        }
+        
+        /// Calculate minimum distance from coordinate to either sideline
+        ///
+        /// __Parameters__
+        ///
+        /// - `coord`: Coordinate to measure from
+        ///
+        /// __Return__
+        ///
+        /// - Distance to nearest sideline in yards (negative if outside field width)
+        pub fn distanceToSideline(self: Field, coord: Coordinate) f32 {
+            // Calculate distances to both sidelines
+            const dist_west = coord.x - self.west_boundary;
+            const dist_east = self.east_boundary - coord.x;
+            
+            // Return the minimum distance
+            return @min(dist_west, dist_east);
+        }
+        
+        /// Calculate minimum distance from coordinate to nearest endzone
+        ///
+        /// __Parameters__
+        ///
+        /// - `coord`: Coordinate to measure from
+        ///
+        /// __Return__
+        ///
+        /// - Distance to nearest endzone in yards (negative if inside an endzone)
+        pub fn distanceToEndZone(self: Field, coord: Coordinate) f32 {
+            // If in home endzone, distance is negative
+            if (coord.y < self.endzone_length) {
+                return coord.y - self.endzone_length;
+            }
+            
+            // If in away endzone, distance is negative
+            const away_endzone_start = self.length - self.endzone_length;
+            if (coord.y > away_endzone_start) {
+                return away_endzone_start - coord.y;
+            }
+            
+            // In playing field, calculate distance to nearest endzone boundary
+            const dist_to_home = coord.y - self.endzone_length;
+            const dist_to_away = away_endzone_start - coord.y;
+            
+            return @min(dist_to_home, dist_to_away);
         }
         
         /// Check if a coordinate is in the home endzone
@@ -212,6 +446,123 @@ const std = @import("std");
     pub const FieldError = error{
         InvalidDimensions,
         AllocationError,
+    };
+    
+    /// Boundary violation types for coordinate checking
+    pub const BoundaryViolation = enum {
+        /// Coordinate is west (left) of field boundary
+        west_out_of_bounds,
+        
+        /// Coordinate is east (right) of field boundary
+        east_out_of_bounds,
+        
+        /// Coordinate is south (bottom) of field boundary
+        south_out_of_bounds,
+        
+        /// Coordinate is north (top) of field boundary
+        north_out_of_bounds,
+    };
+
+// ╔═══════════════════════════════════════════════════════════════════════════════════╗
+// ║                                   FIELD BUILDER                                    ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════╝
+
+    /// Builder pattern for constructing Field instances with fluent API
+    pub const FieldBuilder = struct {
+        /// Field being constructed
+        field: Field,
+        
+        /// Initialize a new field builder with default NFL dimensions
+        ///
+        /// __Parameters__
+        ///
+        /// - `allocator`: Memory allocator for the field
+        ///
+        /// __Return__
+        ///
+        /// - A new FieldBuilder instance
+        pub fn init(allocator: std.mem.Allocator) FieldBuilder {
+            return FieldBuilder{
+                .field = Field.init(allocator),
+            };
+        }
+        
+        /// Set the field name
+        ///
+        /// __Parameters__
+        ///
+        /// - `name`: Name for the field
+        ///
+        /// __Return__
+        ///
+        /// - Pointer to this builder for method chaining
+        pub fn setName(self: *FieldBuilder, name: []const u8) *FieldBuilder {
+            self.field.name = name;
+            return self;
+        }
+        
+        /// Set the surface type
+        ///
+        /// __Parameters__
+        ///
+        /// - `surface`: Type of playing surface
+        ///
+        /// __Return__
+        ///
+        /// - Pointer to this builder for method chaining
+        pub fn setSurface(self: *FieldBuilder, surface: SurfaceType) *FieldBuilder {
+            self.field.surface_type = surface;
+            return self;
+        }
+        
+        /// Set custom field dimensions
+        ///
+        /// __Parameters__
+        ///
+        /// - `length`: Total field length including endzones in yards
+        /// - `width`: Field width in yards
+        ///
+        /// __Return__
+        ///
+        /// - Pointer to this builder for method chaining, or FieldError.InvalidDimensions
+        pub fn setDimensions(self: *FieldBuilder, length: f32, width: f32) FieldError!*FieldBuilder {
+            // Validate dimensions are positive
+            if (length <= 0 or width <= 0) {
+                return FieldError.InvalidDimensions;
+            }
+            
+            // Validate endzones don't exceed field length (using current endzone_length)
+            if (self.field.endzone_length * 2 >= length) {
+                return FieldError.InvalidDimensions;
+            }
+            
+            // Update dimensions
+            self.field.length = length;
+            self.field.width = width;
+            
+            // Update boundaries
+            self.field.north_boundary = length;
+            self.field.east_boundary = width;
+            
+            // Recalculate proportional hash marks at 28% and 72% of width
+            const hash_from_sideline = width * 0.28;
+            self.field.left_hash_x = hash_from_sideline;
+            self.field.right_hash_x = width - hash_from_sideline;
+            
+            // Update center position
+            self.field.center_x = width / 2.0;
+            
+            return self;
+        }
+        
+        /// Build and return the configured field
+        ///
+        /// __Return__
+        ///
+        /// - The configured Field instance
+        pub fn build(self: FieldBuilder) Field {
+            return self.field;
+        }
     };
 
 // ╔═══════════════════════════════════════════════════════════════════════════════════╗

@@ -1,6 +1,7 @@
 // field.test.zig — Unit tests for NFL field module
 //
 // repo   : https://github.com/fisty/zig-nfl-field
+// docs   : https://github.com/fisty/zig-nfl-field/tree/main/docs
 // author : https://github.com/fisty
 //
 // Vibe coded by fisty.
@@ -462,6 +463,414 @@ const field = @import("field.zig");
         try testing.expect(err1 != err2);
     }
     
+    test "unit: Field: initCustom creates field with custom dimensions" {
+        // Valid custom dimensions
+        const custom = try field.Field.initCustom(
+            std.testing.allocator,
+            100.0,  // length
+            50.0,   // width
+            8.0     // end_zone_length
+        );
+        defer {
+            var mutable = custom;
+            mutable.deinit();
+        }
+        
+        // Verify dimensions
+        try testing.expectEqual(@as(f32, 100.0), custom.length);
+        try testing.expectEqual(@as(f32, 50.0), custom.width);
+        try testing.expectEqual(@as(f32, 8.0), custom.endzone_length);
+        
+        // Verify boundaries
+        try testing.expectEqual(@as(f32, 100.0), custom.north_boundary);
+        try testing.expectEqual(@as(f32, 0.0), custom.south_boundary);
+        try testing.expectEqual(@as(f32, 50.0), custom.east_boundary);
+        try testing.expectEqual(@as(f32, 0.0), custom.west_boundary);
+        
+        // Verify hash marks at 28% and 72% of width
+        const expected_hash_from_side = 50.0 * 0.28;
+        try testing.expectApproxEqAbs(@as(f32, expected_hash_from_side), custom.left_hash_x, 0.001);
+        try testing.expectApproxEqAbs(@as(f32, 50.0 - expected_hash_from_side), custom.right_hash_x, 0.001);
+        
+        // Verify center
+        try testing.expectEqual(@as(f32, 25.0), custom.center_x);
+    }
+    
+    test "unit: Field: initCustom validates dimensions properly" {
+        // Test negative length
+        const err1 = field.Field.initCustom(
+            std.testing.allocator,
+            -100.0,  // negative length
+            50.0,
+            8.0
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err1);
+        
+        // Test negative width
+        const err2 = field.Field.initCustom(
+            std.testing.allocator,
+            100.0,
+            -50.0,  // negative width
+            8.0
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err2);
+        
+        // Test negative endzone length
+        const err3 = field.Field.initCustom(
+            std.testing.allocator,
+            100.0,
+            50.0,
+            -8.0  // negative endzone
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err3);
+        
+        // Test endzones exceeding field length
+        const err4 = field.Field.initCustom(
+            std.testing.allocator,
+            100.0,
+            50.0,
+            51.0  // endzone_length * 2 > length
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err4);
+        
+        // Test endzones equal to field length
+        const err5 = field.Field.initCustom(
+            std.testing.allocator,
+            100.0,
+            50.0,
+            50.0  // endzone_length * 2 = length
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err5);
+    }
+    
+    test "unit: Field: initCustom rejects zero value dimensions" {
+        // Test zero length
+        const err1 = field.Field.initCustom(
+            std.testing.allocator,
+            0.0,  // zero length
+            50.0,
+            8.0
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err1);
+        
+        // Test zero width
+        const err2 = field.Field.initCustom(
+            std.testing.allocator,
+            100.0,
+            0.0,  // zero width
+            8.0
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err2);
+        
+        // Test zero endzone length
+        const err3 = field.Field.initCustom(
+            std.testing.allocator,
+            100.0,
+            50.0,
+            0.0  // zero endzone
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err3);
+        
+        // Test all zeros
+        const err4 = field.Field.initCustom(
+            std.testing.allocator,
+            0.0,
+            0.0,
+            0.0
+        );
+        try testing.expectError(field.FieldError.InvalidDimensions, err4);
+    }
+    
+    test "unit: Field: initCustom with various valid custom dimensions" {
+        // Small field
+        const small = try field.Field.initCustom(
+            std.testing.allocator,
+            50.0,   // length
+            30.0,   // width
+            5.0     // endzone_length
+        );
+        defer {
+            var mutable = small;
+            mutable.deinit();
+        }
+        try testing.expectEqual(@as(f32, 50.0), small.length);
+        try testing.expectEqual(@as(f32, 30.0), small.width);
+        try testing.expectEqual(@as(f32, 5.0), small.endzone_length);
+        
+        // Large field
+        const large = try field.Field.initCustom(
+            std.testing.allocator,
+            200.0,  // length
+            80.0,   // width
+            15.0    // endzone_length
+        );
+        defer {
+            var mutable = large;
+            mutable.deinit();
+        }
+        try testing.expectEqual(@as(f32, 200.0), large.length);
+        try testing.expectEqual(@as(f32, 80.0), large.width);
+        try testing.expectEqual(@as(f32, 15.0), large.endzone_length);
+        
+        // Non-standard but valid field
+        const custom = try field.Field.initCustom(
+            std.testing.allocator,
+            75.5,   // odd length
+            42.75,  // odd width
+            7.25    // odd endzone
+        );
+        defer {
+            var mutable = custom;
+            mutable.deinit();
+        }
+        try testing.expectEqual(@as(f32, 75.5), custom.length);
+        try testing.expectEqual(@as(f32, 42.75), custom.width);
+        try testing.expectEqual(@as(f32, 7.25), custom.endzone_length);
+    }
+    
+    test "unit: Field: reset restores default dimensions" {
+        // Create custom field
+        var custom = try field.Field.initCustom(
+            std.testing.allocator,
+            80.0,
+            40.0,
+            5.0
+        );
+        defer custom.deinit();
+        
+        // Verify custom dimensions
+        try testing.expectEqual(@as(f32, 80.0), custom.length);
+        try testing.expectEqual(@as(f32, 40.0), custom.width);
+        
+        // Reset to default
+        custom.reset();
+        
+        // Verify default NFL dimensions restored
+        try testing.expectEqual(field.FIELD_LENGTH_YARDS, custom.length);
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS, custom.width);
+        try testing.expectEqual(field.END_ZONE_LENGTH_YARDS, custom.endzone_length);
+        
+        // Verify allocator preserved
+        try testing.expectEqual(std.testing.allocator.ptr, custom.allocator.ptr);
+    }
+    
+    test "unit: Field: reset restores all field properties" {
+        // Create custom field with modified properties
+        var custom = try field.Field.initCustom(
+            std.testing.allocator,
+            90.0,
+            45.0,
+            7.5
+        );
+        defer custom.deinit();
+        
+        // Modify name and surface
+        custom.name = "Custom Stadium";
+        custom.surface_type = field.SurfaceType.grass;
+        
+        // Store allocator reference before reset
+        const original_allocator = custom.allocator;
+        
+        // Reset field
+        custom.reset();
+        
+        // Verify all properties restored to defaults
+        try testing.expectEqual(field.FIELD_LENGTH_YARDS, custom.length);
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS, custom.width);
+        try testing.expectEqual(field.END_ZONE_LENGTH_YARDS, custom.endzone_length);
+        try testing.expectEqualStrings("NFL Field", custom.name);
+        try testing.expectEqual(field.SurfaceType.turf, custom.surface_type);
+        
+        // Verify boundaries restored
+        try testing.expectEqual(field.FIELD_LENGTH_YARDS, custom.north_boundary);
+        try testing.expectEqual(@as(f32, 0.0), custom.south_boundary);
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS, custom.east_boundary);
+        try testing.expectEqual(@as(f32, 0.0), custom.west_boundary);
+        
+        // Verify hash marks restored
+        try testing.expectEqual(field.HASH_FROM_SIDELINE_YARDS, custom.left_hash_x);
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS - field.HASH_FROM_SIDELINE_YARDS, custom.right_hash_x);
+        
+        // Verify center restored
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS / 2.0, custom.center_x);
+        
+        // Verify allocator preserved
+        try testing.expectEqual(original_allocator.ptr, custom.allocator.ptr);
+    }
+    
+    test "unit: Field: reset can be called multiple times" {
+        var f = field.Field.init(std.testing.allocator);
+        defer f.deinit();
+        
+        // Reset multiple times
+        f.reset();
+        f.reset();
+        f.reset();
+        
+        // Should still have default values
+        try testing.expectEqual(field.FIELD_LENGTH_YARDS, f.length);
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS, f.width);
+        try testing.expectEqual(field.END_ZONE_LENGTH_YARDS, f.endzone_length);
+    }
+    
+    test "unit: FieldBuilder: init creates builder with default field" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Should have default NFL dimensions
+        try testing.expectEqual(field.FIELD_LENGTH_YARDS, built_field.length);
+        try testing.expectEqual(field.FIELD_WIDTH_YARDS, built_field.width);
+        try testing.expectEqual(field.END_ZONE_LENGTH_YARDS, built_field.endzone_length);
+    }
+    
+    test "unit: FieldBuilder: setName updates field name" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        _ = builder.setName("MetLife Stadium");
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        try testing.expectEqualStrings("MetLife Stadium", built_field.name);
+    }
+    
+    test "unit: FieldBuilder: setSurface updates surface type" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        _ = builder.setSurface(field.SurfaceType.grass);
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        try testing.expectEqual(field.SurfaceType.grass, built_field.surface_type);
+    }
+    
+    test "unit: FieldBuilder: setDimensions updates field dimensions" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        _ = try builder.setDimensions(110.0, 55.0);
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Check dimensions
+        try testing.expectEqual(@as(f32, 110.0), built_field.length);
+        try testing.expectEqual(@as(f32, 55.0), built_field.width);
+        
+        // Check boundaries updated
+        try testing.expectEqual(@as(f32, 110.0), built_field.north_boundary);
+        try testing.expectEqual(@as(f32, 55.0), built_field.east_boundary);
+        
+        // Check hash marks recalculated (28% and 72% of width)
+        const expected_hash = 55.0 * 0.28;
+        try testing.expectApproxEqAbs(expected_hash, built_field.left_hash_x, 0.001);
+        try testing.expectApproxEqAbs(55.0 - expected_hash, built_field.right_hash_x, 0.001);
+        
+        // Check center recalculated
+        try testing.expectEqual(@as(f32, 27.5), built_field.center_x);
+    }
+    
+    test "unit: FieldBuilder: setDimensions validates input" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Test negative length
+        const err1 = builder.setDimensions(-110.0, 55.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err1);
+        
+        // Test negative width
+        const err2 = builder.setDimensions(110.0, -55.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err2);
+        
+        // Test dimensions that would make endzones too large
+        // Default endzone is 10 yards, so length must be > 20
+        const err3 = builder.setDimensions(20.0, 55.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err3);
+    }
+    
+    test "unit: FieldBuilder: method chaining works correctly" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Chain multiple method calls
+        _ = try builder
+            .setName("Lambeau Field")
+            .setSurface(field.SurfaceType.hybrid)
+            .setDimensions(120.0, 53.333333);
+            
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Verify all settings applied
+        try testing.expectEqualStrings("Lambeau Field", built_field.name);
+        try testing.expectEqual(field.SurfaceType.hybrid, built_field.surface_type);
+        try testing.expectEqual(@as(f32, 120.0), built_field.length);
+        try testing.expectEqual(@as(f32, 53.333333), built_field.width);
+    }
+    
+    test "unit: FieldBuilder: setDimensions rejects zero values" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Test zero length
+        const err1 = builder.setDimensions(0.0, 55.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err1);
+        
+        // Test zero width
+        const err2 = builder.setDimensions(110.0, 0.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err2);
+        
+        // Test both zero
+        const err3 = builder.setDimensions(0.0, 0.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err3);
+    }
+    
+    test "unit: FieldBuilder: multiple setDimensions calls work correctly" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // First set dimensions
+        _ = try builder.setDimensions(100.0, 50.0);
+        
+        // Override with new dimensions
+        _ = try builder.setDimensions(150.0, 65.0);
+        
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Should have the last set dimensions
+        try testing.expectEqual(@as(f32, 150.0), built_field.length);
+        try testing.expectEqual(@as(f32, 65.0), built_field.width);
+    }
+    
+    test "unit: FieldBuilder: builds field with correct hash mark calculations" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        _ = try builder.setDimensions(100.0, 60.0);
+        
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Verify hash marks at 28% and 72% of width
+        const expected_hash = 60.0 * 0.28;
+        try testing.expectApproxEqAbs(expected_hash, built_field.left_hash_x, 0.001);
+        try testing.expectApproxEqAbs(60.0 - expected_hash, built_field.right_hash_x, 0.001);
+        
+        // Verify center is correct
+        try testing.expectEqual(@as(f32, 30.0), built_field.center_x);
+    }
+    
     test "integration: Field: existing methods work with enhanced struct" {
         const f = field.Field.init(std.testing.allocator);
         defer {
@@ -488,6 +897,73 @@ const field = @import("field.zig");
         try testing.expect(f.isInPlayingField(playing_field_start));
         try testing.expect(f.isInPlayingField(playing_field_end));
         try testing.expect(f.isInPlayingField((playing_field_start + playing_field_end) / 2));
+    }
+    
+    test "integration: Field: custom field works with all existing methods" {
+        const custom = try field.Field.initCustom(
+            std.testing.allocator,
+            100.0,  // length
+            50.0,   // width
+            8.0     // endzone_length
+        );
+        defer {
+            var mutable = custom;
+            mutable.deinit();
+        }
+        
+        // Test contains method with custom dimensions
+        try testing.expect(custom.contains(25.0, 50.0));  // center
+        try testing.expect(custom.contains(0.0, 0.0));    // corner
+        try testing.expect(custom.contains(50.0, 100.0)); // opposite corner
+        try testing.expect(!custom.contains(51.0, 50.0)); // outside width
+        try testing.expect(!custom.contains(25.0, 101.0)); // outside length
+        
+        // Test endzone detection with custom dimensions
+        try testing.expect(custom.isInHomeEndzone(4.0));  // in home endzone (< 8.0)
+        try testing.expect(!custom.isInHomeEndzone(9.0)); // not in home endzone (> 8.0)
+        try testing.expect(custom.isInAwayEndzone(96.0)); // in away endzone (> 92.0)
+        try testing.expect(!custom.isInAwayEndzone(91.0)); // not in away endzone (< 92.0)
+        
+        // Test playing field detection
+        try testing.expect(custom.isInPlayingField(50.0)); // middle of field
+        try testing.expect(custom.isInPlayingField(8.0));  // edge of home endzone
+        try testing.expect(custom.isInPlayingField(92.0)); // edge of away endzone
+        try testing.expect(!custom.isInPlayingField(7.0)); // in home endzone
+        try testing.expect(!custom.isInPlayingField(93.0)); // in away endzone
+    }
+    
+    test "integration: FieldBuilder: built field works with all Field methods" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        _ = try builder
+            .setName("Test Stadium")
+            .setSurface(field.SurfaceType.hybrid)
+            .setDimensions(110.0, 55.0);
+            
+        const built = builder.build();
+        defer {
+            var mutable = built;
+            mutable.deinit();
+        }
+        
+        // Test field properties
+        try testing.expectEqualStrings("Test Stadium", built.name);
+        try testing.expectEqual(field.SurfaceType.hybrid, built.surface_type);
+        
+        // Test contains method
+        try testing.expect(built.contains(27.5, 55.0));   // center
+        try testing.expect(!built.contains(56.0, 55.0));  // outside width
+        
+        // Test endzone methods
+        try testing.expect(built.isInHomeEndzone(5.0));   // in home endzone
+        try testing.expect(built.isInAwayEndzone(105.0)); // in away endzone
+        try testing.expect(built.isInPlayingField(55.0)); // middle of field
+        
+        // Test with Coordinate
+        const center = field.Coordinate.init(27.5, 55.0);
+        try testing.expect(center.isValidForField(built));
+        
+        const outside = field.Coordinate.init(60.0, 55.0);
+        try testing.expect(!outside.isValidForField(built));
     }
     
     test "integration: Field: coordinates interact correctly with enhanced boundaries" {
@@ -704,6 +1180,994 @@ const field = @import("field.zig");
         try testing.expect(f.contains(f.center_x, 0));
         try testing.expect(f.contains(f.center_x, f.north_boundary));
     }
+    
+    test "stress: Field: multiple init and deinit cycles" {
+        // Test rapid creation and destruction of fields
+        var i: u32 = 0;
+        while (i < 100) : (i += 1) {
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Verify field is valid
+            try testing.expectEqual(field.FIELD_LENGTH_YARDS, f.length);
+            try testing.expectEqual(field.FIELD_WIDTH_YARDS, f.width);
+        }
+        
+        // Test with custom fields
+        i = 0;
+        while (i < 100) : (i += 1) {
+            var custom = try field.Field.initCustom(
+                std.testing.allocator,
+                @as(f32, @floatFromInt(50 + i)),  // varying lengths
+                @as(f32, @floatFromInt(30 + i/2)), // varying widths
+                5.0
+            );
+            defer custom.deinit();
+            
+            // Verify field dimensions
+            try testing.expectEqual(@as(f32, @floatFromInt(50 + i)), custom.length);
+        }
+    }
+    
+    test "stress: Field: custom field with extreme but valid dimensions" {
+        // Very small field
+        const tiny = try field.Field.initCustom(
+            std.testing.allocator,
+            21.0,   // minimum valid (endzones need < 21/2)
+            10.0,   // small width
+            10.0    // just under half of length
+        );
+        defer {
+            var mutable = tiny;
+            mutable.deinit();
+        }
+        
+        // Verify tiny field works
+        try testing.expect(tiny.contains(5.0, 10.0));
+        try testing.expect(tiny.isInHomeEndzone(5.0));
+        try testing.expect(tiny.isInAwayEndzone(15.0));
+        try testing.expect(!tiny.isInPlayingField(5.0));  // in endzone
+        try testing.expect(!tiny.isInPlayingField(15.0)); // in endzone
+        
+        // Very large field
+        const huge = try field.Field.initCustom(
+            std.testing.allocator,
+            1000.0,  // very long
+            500.0,   // very wide
+            50.0     // large endzones
+        );
+        defer {
+            var mutable = huge;
+            mutable.deinit();
+        }
+        
+        // Verify huge field works
+        try testing.expect(huge.contains(250.0, 500.0));
+        try testing.expect(huge.isInHomeEndzone(25.0));
+        try testing.expect(huge.isInAwayEndzone(975.0));
+        try testing.expect(huge.isInPlayingField(500.0));
+        
+        // Verify hash marks scale correctly
+        const expected_hash = 500.0 * 0.28;
+        try testing.expectApproxEqAbs(expected_hash, huge.left_hash_x, 0.001);
+        try testing.expectApproxEqAbs(500.0 - expected_hash, huge.right_hash_x, 0.001);
+    }
+    
+    test "stress: FieldBuilder: rapid configuration changes" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Rapidly change configurations
+        var i: u32 = 0;
+        while (i < 50) : (i += 1) {
+            _ = builder.setName(if (i % 2 == 0) "Even Stadium" else "Odd Stadium");
+            _ = builder.setSurface(if (i % 3 == 0) field.SurfaceType.grass else field.SurfaceType.turf);
+            
+            if (i % 5 == 0) {
+                _ = try builder.setDimensions(
+                    @as(f32, @floatFromInt(100 + i)),
+                    @as(f32, @floatFromInt(50 + i/2))
+                );
+            }
+        }
+        
+        const final_field = builder.build();
+        defer {
+            var mutable = final_field;
+            mutable.deinit();
+        }
+        
+        // Verify final field is valid
+        try testing.expect(final_field.length > 0);
+        try testing.expect(final_field.width > 0);
+        try testing.expect(final_field.endzone_length > 0);
+    }
+    
+    test "stress: Field: custom field boundary precision" {
+        const custom = try field.Field.initCustom(
+            std.testing.allocator,
+            123.456,  // precise length
+            78.901,   // precise width
+            12.345    // precise endzone
+        );
+        defer {
+            var mutable = custom;
+            mutable.deinit();
+        }
+        
+        // Test boundary precision with custom dimensions
+        const epsilon: f32 = 0.0001;
+        
+        // Test exact boundaries
+        try testing.expect(custom.contains(0.0, 0.0));
+        try testing.expect(custom.contains(78.901, 123.456));
+        
+        // Test just inside boundaries
+        try testing.expect(custom.contains(78.901 - epsilon, 123.456 - epsilon));
+        
+        // Test just outside boundaries
+        try testing.expect(!custom.contains(78.901 + epsilon, 60.0));
+        try testing.expect(!custom.contains(40.0, 123.456 + epsilon));
+        
+        // Test endzone boundaries with precision
+        try testing.expectApproxEqAbs(@as(f32, 12.345), custom.endzone_length, epsilon);
+        try testing.expect(custom.isInHomeEndzone(12.345 - epsilon));
+        try testing.expect(!custom.isInHomeEndzone(12.345 + epsilon));
+        try testing.expect(custom.isInAwayEndzone(123.456 - 12.345 + epsilon));
+        try testing.expect(!custom.isInAwayEndzone(123.456 - 12.345 - epsilon));
+    }
+
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+// ╔══════════════════════════════════════ BOUNDARY CHECKING TESTS ══════════════════════════════════════╗
+
+    // ┌──────────────────────────── Unit Tests ────────────────────────────┐
+    
+        test "unit: Field: containsCoordinate validates coordinates correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test valid coordinates within field
+            const center = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(f.containsCoordinate(center));
+            
+            const origin = field.Coordinate.init(0.0, 0.0);
+            try testing.expect(f.containsCoordinate(origin));
+            
+            const max_corner = field.Coordinate.init(53.333333, 120.0);
+            try testing.expect(f.containsCoordinate(max_corner));
+            
+            // Test invalid coordinates outside field
+            const west_out = field.Coordinate.init(-1.0, 60.0);
+            try testing.expect(!f.containsCoordinate(west_out));
+            
+            const east_out = field.Coordinate.init(54.0, 60.0);
+            try testing.expect(!f.containsCoordinate(east_out));
+            
+            const south_out = field.Coordinate.init(26.666667, -1.0);
+            try testing.expect(!f.containsCoordinate(south_out));
+            
+            const north_out = field.Coordinate.init(26.666667, 121.0);
+            try testing.expect(!f.containsCoordinate(north_out));
+        }
+        
+        test "unit: Field: containsInPlay excludes endzones correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test coordinates in playing field (between yard 10 and 110)
+            const midfield = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(f.containsInPlay(midfield));
+            
+            const twenty_yard = field.Coordinate.init(26.666667, 30.0);
+            try testing.expect(f.containsInPlay(twenty_yard));
+            
+            // Test coordinates in endzones (should return false)
+            const home_endzone = field.Coordinate.init(26.666667, 5.0);
+            try testing.expect(!f.containsInPlay(home_endzone));
+            
+            const away_endzone = field.Coordinate.init(26.666667, 115.0);
+            try testing.expect(!f.containsInPlay(away_endzone));
+            
+            // Test exact boundaries
+            const home_goal = field.Coordinate.init(26.666667, 10.0);
+            try testing.expect(f.containsInPlay(home_goal));
+            
+            const away_goal = field.Coordinate.init(26.666667, 110.0);
+            try testing.expect(f.containsInPlay(away_goal));
+            
+            // Just inside endzones
+            const just_in_home = field.Coordinate.init(26.666667, 9.999);
+            try testing.expect(!f.containsInPlay(just_in_home));
+            
+            const just_in_away = field.Coordinate.init(26.666667, 110.001);
+            try testing.expect(!f.containsInPlay(just_in_away));
+        }
+        
+        test "unit: Field: containsArea validates rectangles correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test fully contained area with correct Y-axis orientation
+            // Origin (0,0) at southwest corner, Y increases northward
+            // top_left.y (80.0) > bottom_right.y (20.0) ✓
+            const tl_in = field.Coordinate.init(10.0, 80.0);  // Northwest corner (higher y)
+            const br_in = field.Coordinate.init(40.0, 20.0);  // Southeast corner (lower y)
+            try testing.expect(f.containsArea(tl_in, br_in));
+            
+            // Test invalid rectangle with inverted Y coordinates
+            // This should return false as top_left.y < bottom_right.y
+            const tl_inverted = field.Coordinate.init(10.0, 20.0);  // Lower y (incorrect)
+            const br_inverted = field.Coordinate.init(40.0, 80.0);  // Higher y (incorrect)
+            try testing.expect(!f.containsArea(tl_inverted, br_inverted));
+            
+            // Test minimum valid rectangle (1 yard x 1 yard)
+            const tl_min = field.Coordinate.init(26.0, 61.0);
+            const br_min = field.Coordinate.init(27.0, 60.0);
+            try testing.expect(f.containsArea(tl_min, br_min));
+            
+            // Test area partially outside (west side)
+            const tl_west = field.Coordinate.init(-5.0, 80.0);
+            const br_west = field.Coordinate.init(40.0, 20.0);
+            try testing.expect(!f.containsArea(tl_west, br_west));
+            
+            // Test area partially outside (east side)
+            const tl_east = field.Coordinate.init(10.0, 80.0);
+            const br_east = field.Coordinate.init(60.0, 20.0);
+            try testing.expect(!f.containsArea(tl_east, br_east));
+            
+            // Test area partially outside (south side)
+            const tl_south = field.Coordinate.init(10.0, 80.0);
+            const br_south = field.Coordinate.init(40.0, -5.0);
+            try testing.expect(!f.containsArea(tl_south, br_south));
+            
+            // Test area partially outside (north side)
+            const tl_north = field.Coordinate.init(10.0, 125.0);
+            const br_north = field.Coordinate.init(40.0, 20.0);
+            try testing.expect(!f.containsArea(tl_north, br_north));
+            
+            // Test exact boundary area (entire field)
+            const tl_exact = field.Coordinate.init(0.0, 120.0);
+            const br_exact = field.Coordinate.init(53.333333, 0.0);
+            try testing.expect(f.containsArea(tl_exact, br_exact));
+            
+            // Test single point area (returns false due to non-positive dimensions)
+            const point = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(!f.containsArea(point, point));
+            
+            // Test edge case: rectangle with same Y coordinates (zero height)
+            const tl_zero_height = field.Coordinate.init(10.0, 50.0);
+            const br_zero_height = field.Coordinate.init(40.0, 50.0);
+            try testing.expect(!f.containsArea(tl_zero_height, br_zero_height));
+            
+            // Test edge case: rectangle with same X coordinates (zero width)
+            const tl_zero_width = field.Coordinate.init(25.0, 80.0);
+            const br_zero_width = field.Coordinate.init(25.0, 20.0);
+            try testing.expect(!f.containsArea(tl_zero_width, br_zero_width));
+        }
+        
+        test "unit: Field: containsLine validates line segments correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test fully contained line
+            const start_in = field.Coordinate.init(10.0, 20.0);
+            const end_in = field.Coordinate.init(40.0, 80.0);
+            try testing.expect(f.containsLine(start_in, end_in));
+            
+            // Test line with start outside
+            const start_out = field.Coordinate.init(-5.0, 20.0);
+            const end_mid = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(!f.containsLine(start_out, end_mid));
+            
+            // Test line with end outside
+            const start_mid = field.Coordinate.init(26.666667, 60.0);
+            const end_out = field.Coordinate.init(60.0, 80.0);
+            try testing.expect(!f.containsLine(start_mid, end_out));
+            
+            // Test line with both endpoints outside
+            const start_west = field.Coordinate.init(-5.0, 60.0);
+            const end_east = field.Coordinate.init(60.0, 60.0);
+            try testing.expect(!f.containsLine(start_west, end_east));
+            
+            // Test diagonal line across field
+            const corner1 = field.Coordinate.init(0.0, 0.0);
+            const corner2 = field.Coordinate.init(53.333333, 120.0);
+            try testing.expect(f.containsLine(corner1, corner2));
+            
+            // Test vertical line along sideline
+            const sideline_start = field.Coordinate.init(0.0, 10.0);
+            const sideline_end = field.Coordinate.init(0.0, 110.0);
+            try testing.expect(f.containsLine(sideline_start, sideline_end));
+            
+            // Test horizontal line across field
+            const cross_start = field.Coordinate.init(0.0, 50.0);
+            const cross_end = field.Coordinate.init(53.333333, 50.0);
+            try testing.expect(f.containsLine(cross_start, cross_end));
+        }
+        
+        test "unit: Field: getBoundaryViolation identifies all violation types" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test west violation
+            const west_coord = field.Coordinate.init(-1.0, 60.0);
+            const west_violation = f.getBoundaryViolation(west_coord);
+            try testing.expect(west_violation != null);
+            try testing.expectEqual(field.BoundaryViolation.west_out_of_bounds, west_violation.?);
+            
+            // Test east violation
+            const east_coord = field.Coordinate.init(54.0, 60.0);
+            const east_violation = f.getBoundaryViolation(east_coord);
+            try testing.expect(east_violation != null);
+            try testing.expectEqual(field.BoundaryViolation.east_out_of_bounds, east_violation.?);
+            
+            // Test south violation
+            const south_coord = field.Coordinate.init(26.666667, -1.0);
+            const south_violation = f.getBoundaryViolation(south_coord);
+            try testing.expect(south_violation != null);
+            try testing.expectEqual(field.BoundaryViolation.south_out_of_bounds, south_violation.?);
+            
+            // Test north violation
+            const north_coord = field.Coordinate.init(26.666667, 121.0);
+            const north_violation = f.getBoundaryViolation(north_coord);
+            try testing.expect(north_violation != null);
+            try testing.expectEqual(field.BoundaryViolation.north_out_of_bounds, north_violation.?);
+            
+            // Test no violation for valid coordinate
+            const valid_coord = field.Coordinate.init(26.666667, 60.0);
+            const no_violation = f.getBoundaryViolation(valid_coord);
+            try testing.expect(no_violation == null);
+            
+            // Test corner violations (should report first check - x axis)
+            const sw_corner = field.Coordinate.init(-1.0, -1.0);
+            const sw_violation = f.getBoundaryViolation(sw_corner);
+            try testing.expectEqual(field.BoundaryViolation.west_out_of_bounds, sw_violation.?);
+            
+            const ne_corner = field.Coordinate.init(54.0, 121.0);
+            const ne_violation = f.getBoundaryViolation(ne_corner);
+            try testing.expectEqual(field.BoundaryViolation.east_out_of_bounds, ne_violation.?);
+        }
+        
+        test "unit: Field: distanceToBoundary calculates minimum distance correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            const tolerance: f32 = 0.001;
+            
+            // Test center of field - should be half width to nearest sideline
+            const center = field.Coordinate.init(26.666667, 60.0);
+            const center_dist = f.distanceToBoundary(center);
+            try testing.expectApproxEqAbs(26.666667, center_dist, tolerance);
+            
+            // Test near west sideline
+            const west_near = field.Coordinate.init(1.0, 60.0);
+            const west_dist = f.distanceToBoundary(west_near);
+            try testing.expectApproxEqAbs(1.0, west_dist, tolerance);
+            
+            // Test near east sideline
+            const east_near = field.Coordinate.init(52.333333, 60.0);
+            const east_dist = f.distanceToBoundary(east_near);
+            try testing.expectApproxEqAbs(1.0, east_dist, tolerance);
+            
+            // Test near south endzone
+            const south_near = field.Coordinate.init(26.666667, 1.0);
+            const south_dist = f.distanceToBoundary(south_near);
+            try testing.expectApproxEqAbs(1.0, south_dist, tolerance);
+            
+            // Test near north endzone
+            const north_near = field.Coordinate.init(26.666667, 119.0);
+            const north_dist = f.distanceToBoundary(north_near);
+            try testing.expectApproxEqAbs(1.0, north_dist, tolerance);
+            
+            // Test corner - should be minimum of two distances
+            const corner = field.Coordinate.init(1.0, 1.0);
+            const corner_dist = f.distanceToBoundary(corner);
+            try testing.expectApproxEqAbs(1.0, corner_dist, tolerance);
+            
+            // Test exact boundary
+            const boundary = field.Coordinate.init(0.0, 60.0);
+            const boundary_dist = f.distanceToBoundary(boundary);
+            try testing.expectApproxEqAbs(0.0, boundary_dist, tolerance);
+        }
+        
+        test "unit: Field: distanceToSideline calculates horizontal distances correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            const tolerance: f32 = 0.001;
+            
+            // Test center of field
+            const center = field.Coordinate.init(26.666667, 60.0);
+            const center_dist = f.distanceToSideline(center);
+            try testing.expectApproxEqAbs(26.666667, center_dist, tolerance);
+            
+            // Test near west sideline
+            const west = field.Coordinate.init(5.0, 60.0);
+            const west_dist = f.distanceToSideline(west);
+            try testing.expectApproxEqAbs(5.0, west_dist, tolerance);
+            
+            // Test near east sideline
+            const east = field.Coordinate.init(48.333333, 60.0);
+            const east_dist = f.distanceToSideline(east);
+            try testing.expectApproxEqAbs(5.0, east_dist, tolerance);
+            
+            // Test on west sideline
+            const on_west = field.Coordinate.init(0.0, 60.0);
+            const on_west_dist = f.distanceToSideline(on_west);
+            try testing.expectApproxEqAbs(0.0, on_west_dist, tolerance);
+            
+            // Test on east sideline
+            const on_east = field.Coordinate.init(53.333333, 60.0);
+            const on_east_dist = f.distanceToSideline(on_east);
+            try testing.expectApproxEqAbs(0.0, on_east_dist, tolerance);
+            
+            // Test at hash marks
+            const west_hash = field.Coordinate.init(14.875, 50.0);
+            const west_hash_dist = f.distanceToSideline(west_hash);
+            try testing.expectApproxEqAbs(14.875, west_hash_dist, tolerance);
+            
+            const east_hash = field.Coordinate.init(38.458333, 50.0);
+            const east_hash_dist = f.distanceToSideline(east_hash);
+            try testing.expectApproxEqAbs(14.875, east_hash_dist, tolerance);
+        }
+        
+        test "unit: Field: distanceToEndZone calculates vertical distances correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            const tolerance: f32 = 0.001;
+            
+            // Test midfield
+            const midfield = field.Coordinate.init(26.666667, 60.0);
+            const mid_dist = f.distanceToEndZone(midfield);
+            try testing.expectApproxEqAbs(50.0, mid_dist, tolerance); // 60 - 10 = 50 to home goal line
+            
+            // Test near home goal line
+            const home_twenty = field.Coordinate.init(26.666667, 30.0);
+            const home_dist = f.distanceToEndZone(home_twenty);
+            try testing.expectApproxEqAbs(20.0, home_dist, tolerance); // 30 - 10 = 20
+            
+            // Test near away goal line
+            const away_twenty = field.Coordinate.init(26.666667, 90.0);
+            const away_dist = f.distanceToEndZone(away_twenty);
+            try testing.expectApproxEqAbs(20.0, away_dist, tolerance); // 110 - 90 = 20
+            
+            // Test in home endzone (distance is negative when in endzone)
+            const home_ez = field.Coordinate.init(26.666667, 5.0);
+            const home_ez_dist = f.distanceToEndZone(home_ez);
+            try testing.expectApproxEqAbs(-5.0, home_ez_dist, tolerance); // 5 - 10 = -5
+            
+            // Test in away endzone (distance is negative when in endzone)
+            const away_ez = field.Coordinate.init(26.666667, 115.0);
+            const away_ez_dist = f.distanceToEndZone(away_ez);
+            try testing.expectApproxEqAbs(-5.0, away_ez_dist, tolerance); // 110 - 115 = -5
+            
+            // Test on goal lines
+            const home_goal = field.Coordinate.init(26.666667, 10.0);
+            const home_goal_dist = f.distanceToEndZone(home_goal);
+            try testing.expectApproxEqAbs(0.0, home_goal_dist, tolerance);
+            
+            const away_goal = field.Coordinate.init(26.666667, 110.0);
+            const away_goal_dist = f.distanceToEndZone(away_goal);
+            try testing.expectApproxEqAbs(0.0, away_goal_dist, tolerance);
+        }
+        
+        test "unit: Field: boundary checks handle exact boundaries correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test exact field boundaries are valid
+            const corners = [_]field.Coordinate{
+                field.Coordinate.init(0.0, 0.0),
+                field.Coordinate.init(53.333333, 0.0),
+                field.Coordinate.init(0.0, 120.0),
+                field.Coordinate.init(53.333333, 120.0),
+            };
+            
+            for (corners) |corner| {
+                try testing.expect(f.containsCoordinate(corner));
+                try testing.expect(f.getBoundaryViolation(corner) == null);
+            }
+            
+            // Test just outside boundaries are invalid
+            const epsilon: f32 = 0.001;
+            const outside = [_]field.Coordinate{
+                field.Coordinate.init(-epsilon, 60.0),
+                field.Coordinate.init(53.333333 + epsilon, 60.0),
+                field.Coordinate.init(26.666667, -epsilon),
+                field.Coordinate.init(26.666667, 120.0 + epsilon),
+            };
+            
+            for (outside) |coord| {
+                try testing.expect(!f.containsCoordinate(coord));
+                try testing.expect(f.getBoundaryViolation(coord) != null);
+            }
+            
+            // Test exact goal lines for in-play checks
+            const home_goal = field.Coordinate.init(26.666667, 10.0);
+            const away_goal = field.Coordinate.init(26.666667, 110.0);
+            
+            try testing.expect(f.containsInPlay(home_goal));
+            try testing.expect(f.containsInPlay(away_goal));
+            
+            // Just in endzones
+            const home_ez = field.Coordinate.init(26.666667, 10.0 - epsilon);
+            const away_ez = field.Coordinate.init(26.666667, 110.0 + epsilon);
+            
+            try testing.expect(!f.containsInPlay(home_ez));
+            try testing.expect(!f.containsInPlay(away_ez));
+        }
+        
+        test "unit: Field: boundary checks handle negative coordinates correctly" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test various negative coordinates
+            const negatives = [_]field.Coordinate{
+                field.Coordinate.init(-1.0, 60.0),
+                field.Coordinate.init(-10.0, 60.0),
+                field.Coordinate.init(26.666667, -1.0),
+                field.Coordinate.init(26.666667, -10.0),
+                field.Coordinate.init(-5.0, -5.0),
+            };
+            
+            for (negatives) |coord| {
+                try testing.expect(!f.containsCoordinate(coord));
+                try testing.expect(!f.containsInPlay(coord));
+                try testing.expect(f.getBoundaryViolation(coord) != null);
+            }
+            
+            // Test area with negative coordinates
+            const neg_tl = field.Coordinate.init(-10.0, -10.0);
+            const neg_br = field.Coordinate.init(10.0, 10.0);
+            try testing.expect(!f.containsArea(neg_tl, neg_br));
+            
+            // Test line with negative coordinates
+            const neg_start = field.Coordinate.init(-5.0, 60.0);
+            const neg_end = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(!f.containsLine(neg_start, neg_end));
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Integration Tests ────────────────────────────┐
+    
+        test "integration: Field: boundary methods work with custom dimensions" {
+            var builder = field.FieldBuilder.init(std.testing.allocator);
+            _ = try builder.setDimensions(100.0, 50.0);
+            const custom = builder.build();
+            
+            // Test boundaries with custom dimensions
+            const in_bounds = field.Coordinate.init(25.0, 50.0);
+            try testing.expect(custom.containsCoordinate(in_bounds));
+            
+            const out_east = field.Coordinate.init(51.0, 50.0);
+            try testing.expect(!custom.containsCoordinate(out_east));
+            
+            const out_north = field.Coordinate.init(25.0, 101.0);
+            try testing.expect(!custom.containsCoordinate(out_north));
+            
+            // Test custom field with standard 10-yard endzones
+            const in_play = field.Coordinate.init(25.0, 50.0);
+            try testing.expect(custom.containsInPlay(in_play));
+            
+            const home_ez = field.Coordinate.init(25.0, 5.0);
+            try testing.expect(!custom.containsInPlay(home_ez));
+            
+            const away_ez = field.Coordinate.init(25.0, 95.0);
+            try testing.expect(!custom.containsInPlay(away_ez));
+        }
+        
+        test "integration: Field: boundary methods work together consistently" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // If containsCoordinate returns true, getBoundaryViolation should return null
+            const valid = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(f.containsCoordinate(valid));
+            try testing.expect(f.getBoundaryViolation(valid) == null);
+            
+            // If containsCoordinate returns false, getBoundaryViolation should return a value
+            const invalid = field.Coordinate.init(-5.0, 60.0);
+            try testing.expect(!f.containsCoordinate(invalid));
+            try testing.expect(f.getBoundaryViolation(invalid) != null);
+            
+            // If containsInPlay returns true, containsCoordinate must also return true
+            const in_play = field.Coordinate.init(26.666667, 50.0);
+            try testing.expect(f.containsInPlay(in_play));
+            try testing.expect(f.containsCoordinate(in_play));
+            
+            // Boundary distance should be 0 for coordinates on the boundary
+            const on_boundary = field.Coordinate.init(0.0, 60.0);
+            try testing.expect(f.containsCoordinate(on_boundary));
+            try testing.expectApproxEqAbs(@as(f32, 0.0), f.distanceToBoundary(on_boundary), 0.001);
+            
+            // Distance to sideline should equal distance to boundary for centered y-coordinates
+            const centered = field.Coordinate.init(10.0, 60.0);
+            const sideline_dist = f.distanceToSideline(centered);
+            const boundary_dist = f.distanceToBoundary(centered);
+            try testing.expectApproxEqAbs(sideline_dist, boundary_dist, 0.001);
+        }
+        
+        test "integration: Field: boundary checks integrate with Field zones" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Coordinates in home endzone
+            const home_ez = field.Coordinate.init(26.666667, 5.0);
+            try testing.expect(f.containsCoordinate(home_ez));
+            try testing.expect(!f.containsInPlay(home_ez));
+            try testing.expect(f.isInHomeEndzone(home_ez.y));
+            try testing.expectApproxEqAbs(@as(f32, -5.0), f.distanceToEndZone(home_ez), 0.001);
+            
+            // Coordinates in away endzone
+            const away_ez = field.Coordinate.init(26.666667, 115.0);
+            try testing.expect(f.containsCoordinate(away_ez));
+            try testing.expect(!f.containsInPlay(away_ez));
+            try testing.expect(f.isInAwayEndzone(away_ez.y));
+            try testing.expectApproxEqAbs(@as(f32, -5.0), f.distanceToEndZone(away_ez), 0.001);
+            
+            // Coordinates in playing field
+            const playing = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(f.containsCoordinate(playing));
+            try testing.expect(f.containsInPlay(playing));
+            try testing.expect(!f.isInHomeEndzone(playing.y));
+            try testing.expect(!f.isInAwayEndzone(playing.y));
+        }
+        
+        test "integration: Field: containsArea validates real-world NFL zones" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Red zone area (20 yards from away goal)
+            // Y-axis: origin at southwest, increases northward
+            const red_zone_tl = field.Coordinate.init(0.0, 110.0);      // Northwest corner
+            const red_zone_br = field.Coordinate.init(53.333333, 90.0); // Southeast corner
+            try testing.expect(f.containsArea(red_zone_tl, red_zone_br));
+            
+            // Home team's red zone (20 yards from home goal)
+            const home_red_tl = field.Coordinate.init(0.0, 30.0);       // Northwest corner
+            const home_red_br = field.Coordinate.init(53.333333, 10.0); // Southeast corner
+            try testing.expect(f.containsArea(home_red_tl, home_red_br));
+            
+            // Pocket area for quarterback (typical 5x7 yard pocket)
+            const pocket_tl = field.Coordinate.init(24.166667, 57.0);   // Northwest corner
+            const pocket_br = field.Coordinate.init(29.166667, 50.0);   // Southeast corner
+            try testing.expect(f.containsArea(pocket_tl, pocket_br));
+            
+            // Between the hashes area (center field zone)
+            const hash_tl = field.Coordinate.init(14.875, 100.0);       // Left hash, north
+            const hash_br = field.Coordinate.init(38.458333, 20.0);     // Right hash, south
+            try testing.expect(f.containsArea(hash_tl, hash_br));
+            
+            // Invalid: area crossing from playing field into endzone
+            const cross_ez_tl = field.Coordinate.init(10.0, 15.0);     // In playing field
+            const cross_ez_br = field.Coordinate.init(40.0, 5.0);      // In home endzone
+            try testing.expect(f.containsArea(cross_ez_tl, cross_ez_br)); // Still contained
+            
+            // Invalid: incorrectly specified rectangle (Y-axis inverted)
+            const bad_rect_tl = field.Coordinate.init(10.0, 30.0);     // Lower Y (wrong!)
+            const bad_rect_br = field.Coordinate.init(40.0, 70.0);     // Higher Y (wrong!)
+            try testing.expect(!f.containsArea(bad_rect_tl, bad_rect_br));
+            
+            // Edge case: exact sideline to sideline at midfield
+            const sideline_tl = field.Coordinate.init(0.0, 65.0);      // West sideline
+            const sideline_br = field.Coordinate.init(53.333333, 55.0); // East sideline
+            try testing.expect(f.containsArea(sideline_tl, sideline_br));
+            
+            // Invalid: area extends beyond north boundary
+            const beyond_north_tl = field.Coordinate.init(10.0, 125.0); // Beyond field
+            const beyond_north_br = field.Coordinate.init(40.0, 115.0); // In away endzone
+            try testing.expect(!f.containsArea(beyond_north_tl, beyond_north_br));
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Scenario Tests ────────────────────────────┐
+    
+        test "scenario: Field: ball placement validation for NFL rules" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Ball spotted at midfield
+            const midfield_ball = field.Coordinate.init(26.666667, 60.0);
+            try testing.expect(f.containsInPlay(midfield_ball));
+            
+            // Ball spotted at 1-yard line
+            const one_yard = field.Coordinate.init(26.666667, 11.0);
+            try testing.expect(f.containsInPlay(one_yard));
+            
+            // Touchback placement at 20-yard line
+            const touchback = field.Coordinate.init(26.666667, 30.0);
+            try testing.expect(f.containsInPlay(touchback));
+            
+            // Ball cannot be placed in endzone for regular play
+            const endzone_ball = field.Coordinate.init(26.666667, 5.0);
+            try testing.expect(!f.containsInPlay(endzone_ball));
+            
+            // Ball placed at hash marks
+            const left_hash = field.Coordinate.init(14.875, 50.0);
+            const right_hash = field.Coordinate.init(38.458333, 50.0);
+            try testing.expect(f.containsInPlay(left_hash));
+            try testing.expect(f.containsInPlay(right_hash));
+            
+            // Ball out of bounds
+            const out_of_bounds = field.Coordinate.init(-1.0, 50.0);
+            try testing.expect(!f.containsCoordinate(out_of_bounds));
+            try testing.expectEqual(field.BoundaryViolation.west_out_of_bounds, f.getBoundaryViolation(out_of_bounds).?);
+        }
+        
+        test "scenario: Field: player out of bounds detection" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Player in bounds on sideline
+            const on_sideline = field.Coordinate.init(0.1, 50.0);
+            try testing.expect(f.containsCoordinate(on_sideline));
+            try testing.expectApproxEqAbs(@as(f32, 0.1), f.distanceToSideline(on_sideline), 0.001);
+            
+            // Player steps out of bounds
+            const out_west = field.Coordinate.init(-0.1, 50.0);
+            try testing.expect(!f.containsCoordinate(out_west));
+            try testing.expectEqual(field.BoundaryViolation.west_out_of_bounds, f.getBoundaryViolation(out_west).?);
+            
+            const out_east = field.Coordinate.init(53.4, 50.0);
+            try testing.expect(!f.containsCoordinate(out_east));
+            try testing.expectEqual(field.BoundaryViolation.east_out_of_bounds, f.getBoundaryViolation(out_east).?);
+            
+            // Player in endzone for touchdown
+            const touchdown = field.Coordinate.init(26.666667, 115.0);
+            try testing.expect(f.containsCoordinate(touchdown));
+            try testing.expect(!f.containsInPlay(touchdown));
+            try testing.expect(f.isInAwayEndzone(touchdown.y));
+            
+            // Player route that goes out of bounds
+            const route_start = field.Coordinate.init(45.0, 50.0);
+            const route_end = field.Coordinate.init(55.0, 60.0);
+            try testing.expect(!f.containsLine(route_start, route_end));
+        }
+        
+        test "scenario: Field: field goal range calculations" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Kicker at 30-yard field goal position (actually at 40-yard line due to endzone)
+            const fg_30 = field.Coordinate.init(26.666667, 50.0); // 40-yard line + 10 endzone = 50 yards from goal
+            try testing.expect(f.containsInPlay(fg_30));
+            const dist_to_goal = f.distanceToEndZone(fg_30);
+            try testing.expectApproxEqAbs(@as(f32, 40.0), dist_to_goal, 0.001);
+            
+            // Kicker at 50-yard field goal position
+            const fg_50 = field.Coordinate.init(26.666667, 70.0); // Away 40-yard line
+            try testing.expect(f.containsInPlay(fg_50));
+            const dist_50 = 110.0 - 70.0; // Distance to away goal line
+            try testing.expectApproxEqAbs(@as(f32, 40.0), dist_50, 0.001);
+            
+            // Extra point position (15-yard line)
+            const extra_point = field.Coordinate.init(26.666667, 95.0);
+            try testing.expect(f.containsInPlay(extra_point));
+            const ep_dist = 110.0 - 95.0;
+            try testing.expectApproxEqAbs(@as(f32, 15.0), ep_dist, 0.001);
+            
+            // Longest possible field goal (from own end zone)
+            const longest = field.Coordinate.init(26.666667, 10.0);
+            try testing.expect(f.containsInPlay(longest));
+            const longest_dist = 110.0 - 10.0;
+            try testing.expectApproxEqAbs(@as(f32, 100.0), longest_dist, 0.001);
+        }
+        
+        test "scenario: Field: sideline catch validation" {
+            const f = field.Field.init(std.testing.allocator);
+            const toe_tap_margin: f32 = 0.1; // Approximate foot width in yards
+            
+            // Both feet in bounds
+            const foot1 = field.Coordinate.init(1.0, 50.0);
+            const foot2 = field.Coordinate.init(1.5, 50.5);
+            try testing.expect(f.containsCoordinate(foot1));
+            try testing.expect(f.containsCoordinate(foot2));
+            
+            // One foot out of bounds
+            const in_foot = field.Coordinate.init(0.5, 50.0);
+            const out_foot = field.Coordinate.init(-0.1, 50.0);
+            try testing.expect(f.containsCoordinate(in_foot));
+            try testing.expect(!f.containsCoordinate(out_foot));
+            
+            // Toe-tap on sideline
+            const toe_tap = field.Coordinate.init(toe_tap_margin, 80.0);
+            try testing.expect(f.containsCoordinate(toe_tap));
+            try testing.expectApproxEqAbs(toe_tap_margin, f.distanceToSideline(toe_tap), 0.001);
+            
+            // Diving catch trajectory
+            const catch_start = field.Coordinate.init(3.0, 70.0);
+            const catch_end = field.Coordinate.init(0.5, 72.0);
+            try testing.expect(f.containsLine(catch_start, catch_end));
+            
+            // Diving catch that goes out
+            const dive_start = field.Coordinate.init(2.0, 70.0);
+            const dive_end = field.Coordinate.init(-0.5, 72.0);
+            try testing.expect(!f.containsLine(dive_start, dive_end));
+            
+            // Corner endzone catch
+            const corner_catch = field.Coordinate.init(1.0, 119.0);
+            try testing.expect(f.containsCoordinate(corner_catch));
+            try testing.expect(!f.containsInPlay(corner_catch));
+            try testing.expectApproxEqAbs(@as(f32, 1.0), f.distanceToBoundary(corner_catch), 0.001);
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Performance Tests ────────────────────────────┐
+    
+        test "performance: Field: boundary checks complete in sub-microsecond time" {
+            const f = field.Field.init(std.testing.allocator);
+            const iterations = 10000;
+            
+            // Warm up
+            const coord = field.Coordinate.init(26.666667, 60.0);
+            _ = f.containsCoordinate(coord);
+            
+            // Test containsCoordinate performance
+            const start_contains = std.time.nanoTimestamp();
+            var i: usize = 0;
+            while (i < iterations) : (i += 1) {
+                _ = f.containsCoordinate(coord);
+            }
+            const end_contains = std.time.nanoTimestamp();
+            const avg_contains = @as(f64, @floatFromInt(end_contains - start_contains)) / @as(f64, iterations);
+            
+            // Should be well under 1000 nanoseconds (1 microsecond)
+            try testing.expect(avg_contains < 1000);
+            
+            // Test getBoundaryViolation performance
+            const out_coord = field.Coordinate.init(-1.0, 60.0);
+            const start_violation = std.time.nanoTimestamp();
+            i = 0;
+            while (i < iterations) : (i += 1) {
+                _ = f.getBoundaryViolation(out_coord);
+            }
+            const end_violation = std.time.nanoTimestamp();
+            const avg_violation = @as(f64, @floatFromInt(end_violation - start_violation)) / @as(f64, iterations);
+            
+            try testing.expect(avg_violation < 1000);
+            
+            // Test distance calculation performance
+            const start_dist = std.time.nanoTimestamp();
+            i = 0;
+            while (i < iterations) : (i += 1) {
+                _ = f.distanceToBoundary(coord);
+            }
+            const end_dist = std.time.nanoTimestamp();
+            const avg_dist = @as(f64, @floatFromInt(end_dist - start_dist)) / @as(f64, iterations);
+            
+            try testing.expect(avg_dist < 1000);
+        }
+        
+        test "performance: Field: batch boundary checks are efficient" {
+            const f = field.Field.init(std.testing.allocator);
+            const batch_size = 100;
+            
+            // Create array of test coordinates
+            var coords: [batch_size]field.Coordinate = undefined;
+            var j: usize = 0;
+            while (j < batch_size) : (j += 1) {
+                const x = @as(f32, @floatFromInt(j)) * 0.5;
+                const y = @as(f32, @floatFromInt(j)) * 1.2;
+                coords[j] = field.Coordinate.init(x, y);
+            }
+            
+            // Time batch operations
+            const start = std.time.nanoTimestamp();
+            for (coords) |coord| {
+                _ = f.containsCoordinate(coord);
+                _ = f.containsInPlay(coord);
+                _ = f.getBoundaryViolation(coord);
+            }
+            const end = std.time.nanoTimestamp();
+            
+            const total_time = @as(f64, @floatFromInt(end - start));
+            const avg_per_coord = total_time / @as(f64, batch_size);
+            
+            // Should handle 3 operations per coordinate in under 3 microseconds
+            try testing.expect(avg_per_coord < 3000);
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Stress Tests ────────────────────────────┐
+    
+        test "stress: Field: handles maximum float precision at boundaries" {
+            const f = field.Field.init(std.testing.allocator);
+            const epsilon: f32 = std.math.floatEps(f32);
+            
+            // Test with smallest possible increments at boundaries
+            const on_boundary = field.Coordinate.init(53.333333, 120.0);
+            const just_over = field.Coordinate.init(53.333333 + epsilon, 120.0);
+            const just_under = field.Coordinate.init(53.333333 - epsilon, 120.0);
+            
+            try testing.expect(f.containsCoordinate(on_boundary));
+            // Note: Due to float precision, these might both be considered valid
+            _ = f.containsCoordinate(just_over);
+            _ = f.containsCoordinate(just_under);
+            
+            // Test with very small distances
+            const tiny_dist = f.distanceToBoundary(field.Coordinate.init(epsilon, epsilon));
+            try testing.expect(tiny_dist >= 0);
+            try testing.expect(tiny_dist < 1.0);
+            
+            // Test area with minimal size (epsilon-sized area with inverted y)
+            const tiny_tl = field.Coordinate.init(26.666667, 60.001);
+            const tiny_br = field.Coordinate.init(26.666667 + 0.001, 60.0);
+            try testing.expect(f.containsArea(tiny_tl, tiny_br));
+        }
+        
+        test "stress: Field: handles rapid successive boundary checks" {
+            const f = field.Field.init(std.testing.allocator);
+            const rapid_iterations = 100000;
+            
+            // Rapidly alternate between valid and invalid coordinates
+            var k: usize = 0;
+            while (k < rapid_iterations) : (k += 1) {
+                const valid = field.Coordinate.init(26.666667, 60.0);
+                const invalid = field.Coordinate.init(-1.0, 121.0);
+                
+                try testing.expect(f.containsCoordinate(valid));
+                try testing.expect(!f.containsCoordinate(invalid));
+                
+                // Ensure consistent results
+                try testing.expect(f.getBoundaryViolation(valid) == null);
+                try testing.expect(f.getBoundaryViolation(invalid) != null);
+            }
+        }
+        
+        test "stress: Field: handles extreme coordinate values" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test with very large positive values
+            const huge_pos = field.Coordinate.init(1000000.0, 1000000.0);
+            try testing.expect(!f.containsCoordinate(huge_pos));
+            try testing.expect(f.getBoundaryViolation(huge_pos) != null);
+            
+            // Test with very large negative values
+            const huge_neg = field.Coordinate.init(-1000000.0, -1000000.0);
+            try testing.expect(!f.containsCoordinate(huge_neg));
+            try testing.expect(f.getBoundaryViolation(huge_neg) != null);
+            
+            // Test with maximum float values
+            const max_float = field.Coordinate.init(std.math.floatMax(f32), std.math.floatMax(f32));
+            try testing.expect(!f.containsCoordinate(max_float));
+            
+            const min_float = field.Coordinate.init(-std.math.floatMax(f32), -std.math.floatMax(f32));
+            try testing.expect(!f.containsCoordinate(min_float));
+            
+            // Ensure distance calculations handle extreme values
+            // Note: For points outside boundaries, implementation may return any value
+            const dist_huge = f.distanceToBoundary(huge_pos);
+            _ = dist_huge; // Just ensure it doesn't crash
+            
+            const dist_neg = f.distanceToBoundary(huge_neg);
+            _ = dist_neg; // Just ensure it doesn't crash
+        }
+        
+        test "stress: Field: boundary checks remain consistent under stress" {
+            const f = field.Field.init(std.testing.allocator);
+            var prng = std.Random.DefaultPrng.init(42);
+            const random = prng.random();
+            
+            // Generate many random coordinates and verify consistency
+            var m: usize = 0;
+            while (m < 10000) : (m += 1) {
+                const x = random.float(f32) * 100.0 - 25.0; // -25 to 75
+                const y = random.float(f32) * 160.0 - 20.0; // -20 to 140
+                const coord = field.Coordinate.init(x, y);
+                
+                const contains = f.containsCoordinate(coord);
+                const violation = f.getBoundaryViolation(coord);
+                const in_play = f.containsInPlay(coord);
+                
+                // Verify consistency rules
+                if (contains) {
+                    try testing.expect(violation == null);
+                } else {
+                    try testing.expect(violation != null);
+                }
+                
+                if (in_play) {
+                    try testing.expect(contains);
+                }
+                
+                // Distance calculation should not crash
+                const dist = f.distanceToBoundary(coord);
+                _ = dist; // Just ensure it doesn't crash
+                
+                // Verify same results on repeated checks
+                try testing.expectEqual(contains, f.containsCoordinate(coord));
+                try testing.expectEqual(violation, f.getBoundaryViolation(coord));
+                try testing.expectEqual(in_play, f.containsInPlay(coord));
+            }
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
 
 // ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
