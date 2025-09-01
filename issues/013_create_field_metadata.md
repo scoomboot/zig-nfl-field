@@ -3,11 +3,13 @@
 ## Summary
 Implement metadata storage and management for field properties, game conditions, and field state.
 
+**NOTE**: Basic metadata fields (name, surface_type) were implemented in issue #010. This issue now focuses on advanced metadata features like weather conditions and game information.
+
 ## Description
 Create a system for storing and managing field metadata including weather conditions, field conditions, game information, and other dynamic properties that may affect gameplay or visualization.
 
 ## Acceptance Criteria
-- [ ] Create metadata structure for field properties
+- [x] Create metadata structure for field properties (PARTIALLY COMPLETED in #010 - name, surface_type)
 - [ ] Add weather condition tracking
 - [ ] Implement field condition management
 - [ ] Add game information storage

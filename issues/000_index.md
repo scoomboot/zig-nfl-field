@@ -14,15 +14,16 @@ Implement the foundational NFL field geometry and position tracking library foll
 
 ### 🔴 Critical Bug Fixes
 - [x] ✅ [#042](042_fix_coordinate_axis_inconsistency.md): Fix coordinate system axis inconsistency → *blocks: #008, #009*
+- [ ] 🔴 [#044](044_fix_benchmark_compilation.md): Fix benchmark compilation errors → *depends on: #010*
 
 ### Phase 1: Foundation - Coordinate System
 - [x] ✅ [#006](006_define_coordinate_constants.md): Define coordinate system constants → *depends on: #002*
 - [x] ✅ [#007](007_implement_coordinate_struct.md): Implement Coordinate struct → *depends on: #006*
 - [x] ✅ [#008](008_add_coordinate_validation.md): Add coordinate validation functions → *depends on: #007*
-- [ ] 🟡 [#009](009_create_coordinate_conversions.md): Create coordinate conversion utilities → *depends on: #007*
+- [x] ✅ [#009](009_create_coordinate_conversions.md): Create coordinate conversion utilities → *depends on: #007*
 
 ### Phase 2: Core Field Structure
-- [ ] 🟡 [#010](010_design_field_struct.md): Design Field struct layout → *depends on: #007*
+- [x] ✅ [#010](010_design_field_struct.md): Design Field struct layout → *depends on: #007*
 - [ ] 🟡 [#011](011_implement_field_init.md): Implement field initialization → *depends on: #010*
 - [ ] 🟡 [#012](012_add_boundary_checking.md): Add field boundary checking → *depends on: #010*
 - [ ] 🟡 [#013](013_create_field_metadata.md): Create field metadata storage → *depends on: #010*

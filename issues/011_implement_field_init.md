@@ -3,15 +3,17 @@
 ## Summary
 Implement initialization functions for the Field struct with various configuration options.
 
+**NOTE**: Basic init() and deinit() functions were implemented in issue #010. This issue now focuses on advanced initialization features like custom dimensions and builder patterns.
+
 ## Description
 Create initialization functions that allow creating Field instances with default NFL specifications or custom configurations. Include builder pattern support for flexible field creation and validation of field parameters.
 
 ## Acceptance Criteria
-- [ ] Implement default init function with NFL specifications
+- [x] Implement default init function with NFL specifications (COMPLETED in #010)
 - [ ] Add custom init function with parameter validation
 - [ ] Create builder pattern for field configuration
 - [ ] Add field validation during initialization
-- [ ] Implement deinit for cleanup
+- [x] Implement deinit for cleanup (COMPLETED in #010)
 - [ ] Add field reset functionality
 
 ## Dependencies

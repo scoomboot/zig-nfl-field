@@ -3,18 +3,20 @@
 // repo   : https://github.com/fisty/zig-nfl-field
 // author : https://github.com/fisty
 //
-// Vibe coded by Fisty.
+// Vibe coded by fisty.
 
-// ╔═══ PACK ═══╗
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                                          IMPORTS                                         ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
     const std = @import("std");
     const field = @import("field");
     const time = std.time;
     const print = std.debug.print;
 
-// ╚════════════╝
-
-// ╔═══ BENCHMARK UTILITIES ═══╗
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                                   BENCHMARK UTILITIES                                    ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
     /// Simple benchmark timer
     const BenchTimer = struct {
@@ -55,29 +57,44 @@
               .{name, elapsed, per_iter, iterations});
     }
 
-// ╚════════════════════════════╝
-
-// ╔═══ FIELD BENCHMARKS ═══╗
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                                    FIELD BENCHMARKS                                      ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
     fn benchFieldInit() void {
-        _ = field.Field.init();
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const allocator = gpa.allocator();
+        
+        var f = field.Field.init(allocator);
+        defer f.deinit();
     }
     
     fn benchFieldContains() void {
-        const f = field.Field.init();
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const allocator = gpa.allocator();
+        
+        var f = field.Field.init(allocator);
+        defer f.deinit();
         _ = f.contains(26.67, 60);
     }
     
     fn benchFieldEndzoneChecks() void {
-        const f = field.Field.init();
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const allocator = gpa.allocator();
+        
+        var f = field.Field.init(allocator);
+        defer f.deinit();
         _ = f.isInHomeEndzone(5);
         _ = f.isInAwayEndzone(115);
         _ = f.isInPlayingField(60);
     }
 
-// ╚═════════════════════════╝
-
-// ╔═══ COORDINATE BENCHMARKS ═══╗
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                                  COORDINATE BENCHMARKS                                   ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
     fn benchCoordinateInit() void {
         _ = field.Coordinate.init(26.67, 50.5);
@@ -94,9 +111,9 @@
         _ = c.isValid();
     }
 
-// ╚══════════════════════════════╝
-
-// ╔═══ MAIN ═══╗
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                                      ENTRY POINT                                         ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
     pub fn main() !void {
         print("\n=== NFL Field Module Benchmarks ===\n\n", .{});
@@ -120,9 +137,9 @@
         print("\n=== Benchmarks Complete ===\n\n", .{});
     }
 
-// ╚═════════════╝
-
-// ╔═══ TESTS ═══╗
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                                          TEST                                            ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
     test "unit: BenchTimer: timer works correctly" {
         var timer = BenchTimer.init();
@@ -136,6 +153,7 @@
     
     test "unit: Benchmarks: functions compile and run" {
         // Just verify the benchmark functions compile and can execute
+        // Note: These now allocate memory internally
         benchFieldInit();
         benchFieldContains();
         benchFieldEndzoneChecks();
@@ -143,5 +161,3 @@
         benchCoordinateDistance();
         benchCoordinateValidation();
     }
-
-// ╚══════════════╝

@@ -3,11 +3,13 @@
 ## Summary
 Implement comprehensive boundary checking functions for the Field struct to validate positions and areas.
 
+**NOTE**: Basic contains() function and boundary fields were implemented in issue #010. This issue now focuses on advanced boundary checking features.
+
 ## Description
 Add methods to the Field struct that check if coordinates, areas, and movements are within field boundaries. These functions will be essential for game logic and ensuring valid field positions during simulation.
 
 ## Acceptance Criteria
-- [ ] Add function to check if coordinate is within field
+- [x] Add function to check if coordinate is within field (COMPLETED in #010 - contains())
 - [ ] Add function to check if area/rectangle is within field
 - [ ] Add function to check if line segment is within field
 - [ ] Add function to get boundary violations
