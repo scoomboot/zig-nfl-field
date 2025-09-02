@@ -159,7 +159,7 @@ const std = @import("std");
         /// - `allocator`: Memory allocator for dynamic operations
         /// - `length`: Total field length including endzones in yards
         /// - `width`: Field width in yards
-        /// - `end_zone_length`: Length of each endzone in yards
+        /// - `endzone_length`: Length of each endzone in yards
         ///
         /// __Return__
         ///
@@ -168,15 +168,15 @@ const std = @import("std");
             allocator: std.mem.Allocator,
             length: f32,
             width: f32,
-            end_zone_length: f32
+            endzone_length: f32
         ) FieldError!Field {
             // Validate dimensions are positive
-            if (length <= 0 or width <= 0 or end_zone_length <= 0) {
+            if (length <= 0 or width <= 0 or endzone_length <= 0) {
                 return FieldError.InvalidDimensions;
             }
             
             // Validate endzones don't exceed field length
-            if (end_zone_length * 2 >= length) {
+            if (endzone_length * 2 >= length) {
                 return FieldError.InvalidDimensions;
             }
             
@@ -187,7 +187,7 @@ const std = @import("std");
                 .allocator = allocator,
                 .length = length,
                 .width = width,
-                .endzone_length = end_zone_length,
+                .endzone_length = endzone_length,
                 .north_boundary = length,
                 .south_boundary = 0.0,
                 .east_boundary = width,
@@ -924,7 +924,11 @@ const std = @import("std");
         
         // └────────────────────────────────────────────────────────────────────────┘
     };
-    
+
+// ╔═══════════════════════════════════════════════════════════════════════════════════╗
+// ║                                   TYPE DEFINITIONS                                 ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════╝
+
     /// Types of playing surfaces
     pub const SurfaceType = enum {
         grass,
@@ -957,6 +961,98 @@ const std = @import("std");
         
         /// Coordinate is north (top) of field boundary
         north_out_of_bounds,
+    };
+    
+    /// Represents yard lines on the field (0-100).
+    pub const YardLine = enum(u8) {
+        // Special positions
+        south_goal = 0,
+        north_goal = 100,
+        midfield = 50,
+        
+        // Allow any u8 value from 0-100
+        _, 
+        
+        /// Creates a YardLine from a value.
+        pub fn fromInt(value: u8) !YardLine {
+            if (value > 100) return error.InvalidYardLine;
+            return @enumFromInt(value);
+        }
+        
+        /// Converts yard line to Y coordinate on field.
+        pub fn toYCoordinate(self: YardLine) f32 {
+            const yard_value = @intFromEnum(self);
+            return END_ZONE_LENGTH_YARDS + @as(f32, @floatFromInt(yard_value));
+        }
+        
+        /// Creates YardLine from Y coordinate.
+        pub fn fromYCoordinate(y: f32) !YardLine {
+            // Check if in end zone
+            if (y < END_ZONE_LENGTH_YARDS or 
+                y > FIELD_LENGTH_YARDS - END_ZONE_LENGTH_YARDS) {
+                return error.InEndZone;
+            }
+            
+            const yard_value = @as(u8, @intFromFloat(
+                @round(y - END_ZONE_LENGTH_YARDS)
+            ));
+            
+            return YardLine.fromInt(yard_value);
+        }
+        
+        /// Moves yard line by specified yards.
+        pub fn advance(self: YardLine, yards: i8) !YardLine {
+            const current = @as(i16, @intFromEnum(self));
+            const new_value = current + yards;
+            
+            if (new_value < 0 or new_value > 100) {
+                return error.OutOfBounds;
+            }
+            
+            return YardLine.fromInt(@intCast(new_value));
+        }
+        
+        /// Gets distance to another yard line.
+        pub fn distanceTo(self: YardLine, other: YardLine) i8 {
+            const self_value = @as(i16, @intFromEnum(self));
+            const other_value = @as(i16, @intFromEnum(other));
+            return @intCast(other_value - self_value);
+        }
+        
+        /// Formats yard line for display.
+        pub fn format(
+            self: YardLine,
+            comptime fmt: []const u8,
+            options: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            _ = fmt;
+            _ = options;
+            const value = @intFromEnum(self);
+            
+            if (value == 50) {
+                try writer.writeAll("Midfield");
+            } else if (value < 50) {
+                try writer.print("Own {d}", .{value});
+            } else {
+                try writer.print("Opp {d}", .{100 - value});
+            }
+        }
+        
+        /// Gets the side of field for this yard line.
+        pub fn getFieldSide(self: YardLine) FieldSide {
+            const value = @intFromEnum(self);
+            if (value < 50) return .own;
+            if (value > 50) return .opponent;
+            return .midfield;
+        }
+    };
+    
+    /// Represents which side of the field.
+    pub const FieldSide = enum {
+        own,
+        midfield,
+        opponent,
     };
 
 // ╔═══════════════════════════════════════════════════════════════════════════════════╗
@@ -1046,6 +1142,10 @@ const std = @import("std");
         /// Field being constructed
         field: Field,
         
+        // ┌─────────────────────────────────────────────────────────────────────────────┐
+        // │                             Builder Methods                                  │
+        // └─────────────────────────────────────────────────────────────────────────────┘
+        
         /// Initialize a new field builder with default NFL dimensions
         ///
         /// __Parameters__
@@ -1125,6 +1225,32 @@ const std = @import("std");
             
             // Update center position
             self.field.center_x = width / 2.0;
+            
+            return self;
+        }
+        
+        /// Set custom endzone length for the field
+        ///
+        /// __Parameters__
+        ///
+        /// - `endzone_length`: Length of each endzone in yards
+        ///
+        /// __Return__
+        ///
+        /// - Pointer to this builder for method chaining, or FieldError.InvalidDimensions
+        pub fn setEndZoneLength(self: *FieldBuilder, endzone_length: f32) FieldError!*FieldBuilder {
+            // Validate endzone length is positive
+            if (endzone_length <= 0) {
+                return FieldError.InvalidDimensions;
+            }
+            
+            // Validate endzones don't exceed field length
+            if (endzone_length * 2 >= self.field.length) {
+                return FieldError.InvalidDimensions;
+            }
+            
+            // Update endzone length
+            self.field.endzone_length = endzone_length;
             
             return self;
         }

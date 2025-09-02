@@ -469,7 +469,7 @@ const field = @import("field.zig");
             std.testing.allocator,
             100.0,  // length
             50.0,   // width
-            8.0     // end_zone_length
+            8.0     // endzone_length
         );
         defer {
             var mutable = custom;
@@ -871,6 +871,85 @@ const field = @import("field.zig");
         try testing.expectEqual(@as(f32, 30.0), built_field.center_x);
     }
     
+    test "unit: FieldBuilder: setEndZoneLength updates field endzone_length" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Set a valid endzone length
+        _ = try builder.setEndZoneLength(15.0);
+        
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Verify the endzone length was updated
+        try testing.expectEqual(@as(f32, 15.0), built_field.endzone_length);
+    }
+    
+    test "unit: FieldBuilder: setEndZoneLength validates positive values" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Test negative value
+        const err1 = builder.setEndZoneLength(-5.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err1);
+        
+        // Test zero value
+        const err2 = builder.setEndZoneLength(0.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err2);
+        
+        // Test very small negative value
+        const err3 = builder.setEndZoneLength(-0.001);
+        try testing.expectError(field.FieldError.InvalidDimensions, err3);
+    }
+    
+    test "unit: FieldBuilder: setEndZoneLength validates against field length constraint" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Default field length is 120.0, so endzone_length * 2 must be < 120.0
+        // Test exactly half the field length (should fail)
+        const err1 = builder.setEndZoneLength(60.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err1);
+        
+        // Test more than half the field length (should fail)
+        const err2 = builder.setEndZoneLength(65.0);
+        try testing.expectError(field.FieldError.InvalidDimensions, err2);
+        
+        // Test just under half the field length (should succeed)
+        _ = try builder.setEndZoneLength(59.9);
+        
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        try testing.expectEqual(@as(f32, 59.9), built_field.endzone_length);
+    }
+    
+    test "unit: FieldBuilder: setEndZoneLength supports method chaining" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // Chain setEndZoneLength with other methods
+        _ = builder.setName("Chain Test Stadium");
+        _ = try builder.setEndZoneLength(12.0);
+        _ = builder.setSurface(field.SurfaceType.grass);
+        _ = try builder.setDimensions(110.0, 50.0);
+            
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Verify all chained settings applied
+        try testing.expectEqualStrings("Chain Test Stadium", built_field.name);
+        try testing.expectEqual(@as(f32, 12.0), built_field.endzone_length);
+        try testing.expectEqual(field.SurfaceType.grass, built_field.surface_type);
+        try testing.expectEqual(@as(f32, 110.0), built_field.length);
+        try testing.expectEqual(@as(f32, 50.0), built_field.width);
+    }
+    
     test "integration: Field: existing methods work with enhanced struct" {
         const f = field.Field.init(std.testing.allocator);
         defer {
@@ -964,6 +1043,67 @@ const field = @import("field.zig");
         
         const outside = field.Coordinate.init(60.0, 55.0);
         try testing.expect(!outside.isValidForField(built));
+    }
+    
+    test "integration: FieldBuilder: setEndZoneLength works correctly with setDimensions" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // First set custom dimensions
+        _ = try builder.setDimensions(100.0, 50.0);
+        
+        // Then set endzone length that would be invalid for default dimensions
+        // but valid for our custom dimensions
+        _ = try builder.setEndZoneLength(45.0);  // Valid for 100.0 length field
+        
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Verify both settings applied correctly
+        try testing.expectEqual(@as(f32, 100.0), built_field.length);
+        try testing.expectEqual(@as(f32, 50.0), built_field.width);
+        try testing.expectEqual(@as(f32, 45.0), built_field.endzone_length);
+        
+        // Verify endzone detection works with custom endzone length
+        try testing.expect(built_field.isInHomeEndzone(20.0));   // in home endzone (< 45)
+        try testing.expect(!built_field.isInHomeEndzone(46.0));  // not in home endzone (> 45)
+        try testing.expect(built_field.isInAwayEndzone(80.0));   // in away endzone (> 55)
+        try testing.expect(!built_field.isInAwayEndzone(54.0));  // not in away endzone (< 55)
+        
+        // Verify playing field detection
+        try testing.expect(built_field.isInPlayingField(50.0));  // middle of field
+        try testing.expect(!built_field.isInPlayingField(44.0)); // in home endzone
+        try testing.expect(!built_field.isInPlayingField(56.0)); // in away endzone
+    }
+    
+    test "integration: FieldBuilder: multiple setEndZoneLength calls work correctly" {
+        var builder = field.FieldBuilder.init(std.testing.allocator);
+        
+        // First set one endzone length
+        _ = try builder.setEndZoneLength(8.0);
+        
+        // Override with a different value
+        _ = try builder.setEndZoneLength(12.0);
+        
+        // Override again with another value
+        _ = try builder.setEndZoneLength(15.0);
+        
+        const built_field = builder.build();
+        defer {
+            var mutable = built_field;
+            mutable.deinit();
+        }
+        
+        // Should have the last set endzone length
+        try testing.expectEqual(@as(f32, 15.0), built_field.endzone_length);
+        
+        // Verify field calculations use the final endzone length
+        try testing.expect(built_field.isInHomeEndzone(14.0));   // in home endzone
+        try testing.expect(!built_field.isInHomeEndzone(16.0));  // not in home endzone
+        try testing.expect(built_field.isInAwayEndzone(106.0));  // in away endzone (120 - 15 + 1)
+        try testing.expect(!built_field.isInAwayEndzone(104.0)); // not in away endzone
     }
     
     test "integration: Field: coordinates interact correctly with enhanced boundaries" {
@@ -5050,3 +5190,570 @@ const field = @import("field.zig");
     // └──────────────────────────────────────────────────────────────────┘
 
 // ╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+// ╔══════════════════════════════════════ YARDLINE TESTS ══════════════════════════════════════╗
+
+    // ┌──────────────────────────── Unit Tests ────────────────────────────┐
+
+        test "unit: YardLine: fromInt creates valid enum values" {
+            // Test valid values
+            const zero = try field.YardLine.fromInt(0);
+            try testing.expectEqual(@as(u8, 0), @intFromEnum(zero));
+            
+            const fifty = try field.YardLine.fromInt(50);
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(fifty));
+            
+            const hundred = try field.YardLine.fromInt(100);
+            try testing.expectEqual(@as(u8, 100), @intFromEnum(hundred));
+            
+            // Test arbitrary valid values
+            const twenty_five = try field.YardLine.fromInt(25);
+            try testing.expectEqual(@as(u8, 25), @intFromEnum(twenty_five));
+            
+            const seventy = try field.YardLine.fromInt(70);
+            try testing.expectEqual(@as(u8, 70), @intFromEnum(seventy));
+        }
+
+        test "unit: YardLine: fromInt rejects invalid values" {
+            // Test values over 100
+            try testing.expectError(error.InvalidYardLine, field.YardLine.fromInt(101));
+            try testing.expectError(error.InvalidYardLine, field.YardLine.fromInt(150));
+            try testing.expectError(error.InvalidYardLine, field.YardLine.fromInt(255));
+            
+            // Test maximum u8 value
+            try testing.expectError(error.InvalidYardLine, field.YardLine.fromInt(200));
+        }
+
+        test "unit: YardLine: special named values match expectations" {
+            // Test named enum values
+            try testing.expectEqual(@as(u8, 0), @intFromEnum(field.YardLine.south_goal));
+            try testing.expectEqual(@as(u8, 100), @intFromEnum(field.YardLine.north_goal));
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(field.YardLine.midfield));
+            
+            // Test that fromInt returns equivalent values
+            const south = try field.YardLine.fromInt(0);
+            try testing.expectEqual(field.YardLine.south_goal, south);
+            
+            const north = try field.YardLine.fromInt(100);
+            try testing.expectEqual(field.YardLine.north_goal, north);
+            
+            const mid = try field.YardLine.fromInt(50);
+            try testing.expectEqual(field.YardLine.midfield, mid);
+        }
+
+        test "unit: YardLine: toYCoordinate converts to field position" {
+            // Test goal lines
+            const south_goal = field.YardLine.south_goal;
+            try testing.expectEqual(@as(f32, 10.0), south_goal.toYCoordinate()); // 0 + 10 (endzone)
+            
+            const north_goal = field.YardLine.north_goal;
+            try testing.expectEqual(@as(f32, 110.0), north_goal.toYCoordinate()); // 100 + 10 (endzone)
+            
+            // Test midfield
+            const midfield = field.YardLine.midfield;
+            try testing.expectEqual(@as(f32, 60.0), midfield.toYCoordinate()); // 50 + 10 (endzone)
+            
+            // Test arbitrary positions
+            const twenty = try field.YardLine.fromInt(20);
+            try testing.expectEqual(@as(f32, 30.0), twenty.toYCoordinate()); // 20 + 10
+            
+            const eighty = try field.YardLine.fromInt(80);
+            try testing.expectEqual(@as(f32, 90.0), eighty.toYCoordinate()); // 80 + 10
+        }
+
+        test "unit: YardLine: fromYCoordinate converts from field position" {
+            // Test valid playing field positions
+            const at_zero = try field.YardLine.fromYCoordinate(10.0); // Goal line
+            try testing.expectEqual(@as(u8, 0), @intFromEnum(at_zero));
+            
+            const at_fifty = try field.YardLine.fromYCoordinate(60.0); // Midfield
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(at_fifty));
+            
+            const at_hundred = try field.YardLine.fromYCoordinate(110.0); // Other goal line
+            try testing.expectEqual(@as(u8, 100), @intFromEnum(at_hundred));
+            
+            // Test rounding
+            const at_twenty_low = try field.YardLine.fromYCoordinate(30.4); // Should round to 20
+            try testing.expectEqual(@as(u8, 20), @intFromEnum(at_twenty_low));
+            
+            const at_twenty_high = try field.YardLine.fromYCoordinate(30.6); // Should round to 21
+            try testing.expectEqual(@as(u8, 21), @intFromEnum(at_twenty_high));
+            
+            const at_twenty_exact = try field.YardLine.fromYCoordinate(30.5); // Should round to 21 (round-half-up)
+            try testing.expectEqual(@as(u8, 21), @intFromEnum(at_twenty_exact));
+        }
+
+        test "unit: YardLine: fromYCoordinate rejects endzone positions" {
+            // Test south endzone rejection
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(0.0));
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(5.0));
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(9.9));
+            
+            // Test north endzone rejection
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(110.1));
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(115.0));
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(120.0));
+        }
+
+        test "unit: YardLine: advance moves yard line correctly" {
+            // Test positive advance
+            const start = try field.YardLine.fromInt(25);
+            const forward_10 = try start.advance(10);
+            try testing.expectEqual(@as(u8, 35), @intFromEnum(forward_10));
+            
+            const forward_25 = try start.advance(25);
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(forward_25));
+            
+            // Test negative advance
+            const midfield = field.YardLine.midfield;
+            const back_10 = try midfield.advance(-10);
+            try testing.expectEqual(@as(u8, 40), @intFromEnum(back_10));
+            
+            const back_30 = try midfield.advance(-30);
+            try testing.expectEqual(@as(u8, 20), @intFromEnum(back_30));
+            
+            // Test no movement
+            const no_move = try midfield.advance(0);
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(no_move));
+        }
+
+        test "unit: YardLine: advance rejects out of bounds moves" {
+            // Test advancing past north goal
+            const at_80 = try field.YardLine.fromInt(80);
+            try testing.expectError(error.OutOfBounds, at_80.advance(21));
+            try testing.expectError(error.OutOfBounds, at_80.advance(100));
+            
+            // Test advancing past south goal
+            const at_20 = try field.YardLine.fromInt(20);
+            try testing.expectError(error.OutOfBounds, at_20.advance(-21));
+            try testing.expectError(error.OutOfBounds, at_20.advance(-100));
+            
+            // Test boundary cases
+            const at_goal = field.YardLine.south_goal;
+            try testing.expectError(error.OutOfBounds, at_goal.advance(-1));
+            
+            const at_end = field.YardLine.north_goal;
+            try testing.expectError(error.OutOfBounds, at_end.advance(1));
+        }
+
+        test "unit: YardLine: distanceTo calculates signed distance" {
+            // Test positive distance (moving north)
+            const at_20 = try field.YardLine.fromInt(20);
+            const at_50 = field.YardLine.midfield;
+            try testing.expectEqual(@as(i8, 30), at_20.distanceTo(at_50));
+            
+            // Test negative distance (moving south)
+            try testing.expectEqual(@as(i8, -30), at_50.distanceTo(at_20));
+            
+            // Test zero distance
+            try testing.expectEqual(@as(i8, 0), at_50.distanceTo(at_50));
+            
+            // Test full field distance
+            const south = field.YardLine.south_goal;
+            const north = field.YardLine.north_goal;
+            try testing.expectEqual(@as(i8, 100), south.distanceTo(north));
+            try testing.expectEqual(@as(i8, -100), north.distanceTo(south));
+        }
+
+        test "unit: YardLine: getFieldSide determines field half" {
+            // Test own territory (< 50)
+            const own_20 = try field.YardLine.fromInt(20);
+            try testing.expectEqual(field.FieldSide.own, own_20.getFieldSide());
+            
+            const own_0 = field.YardLine.south_goal;
+            try testing.expectEqual(field.FieldSide.own, own_0.getFieldSide());
+            
+            const own_49 = try field.YardLine.fromInt(49);
+            try testing.expectEqual(field.FieldSide.own, own_49.getFieldSide());
+            
+            // Test midfield (= 50)
+            const mid = field.YardLine.midfield;
+            try testing.expectEqual(field.FieldSide.midfield, mid.getFieldSide());
+            
+            // Test opponent territory (> 50)
+            const opp_51 = try field.YardLine.fromInt(51);
+            try testing.expectEqual(field.FieldSide.opponent, opp_51.getFieldSide());
+            
+            const opp_80 = try field.YardLine.fromInt(80);
+            try testing.expectEqual(field.FieldSide.opponent, opp_80.getFieldSide());
+            
+            const opp_100 = field.YardLine.north_goal;
+            try testing.expectEqual(field.FieldSide.opponent, opp_100.getFieldSide());
+        }
+
+        test "unit: YardLine: format produces NFL-style descriptions" {
+            var buffer: [100]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buffer);
+            
+            // Test midfield
+            const mid = field.YardLine.midfield;
+            try mid.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Midfield", stream.getWritten());
+            
+            // Test own territory
+            stream.reset();
+            const own_25 = try field.YardLine.fromInt(25);
+            try own_25.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Own 25", stream.getWritten());
+            
+            stream.reset();
+            const own_1 = try field.YardLine.fromInt(1);
+            try own_1.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Own 1", stream.getWritten());
+            
+            // Test opponent territory
+            stream.reset();
+            const opp_30 = try field.YardLine.fromInt(70); // 100 - 70 = 30
+            try opp_30.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 30", stream.getWritten());
+            
+            stream.reset();
+            const opp_1 = try field.YardLine.fromInt(99); // 100 - 99 = 1
+            try opp_1.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 1", stream.getWritten());
+            
+            // Test goal lines
+            stream.reset();
+            const own_goal = field.YardLine.south_goal;
+            try own_goal.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Own 0", stream.getWritten());
+            
+            stream.reset();
+            const opp_goal = field.YardLine.north_goal;
+            try opp_goal.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 0", stream.getWritten());
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌──────────────────────────── Integration Tests ────────────────────────────┐
+
+        test "integration: YardLine: coordinate conversions are bidirectional" {
+            // Test that YardLine -> Coordinate -> YardLine preserves value
+            const test_values = [_]u8{ 0, 10, 25, 49, 50, 51, 75, 90, 100 };
+            
+            for (test_values) |value| {
+                const original = try field.YardLine.fromInt(value);
+                const y_coord = original.toYCoordinate();
+                const recovered = try field.YardLine.fromYCoordinate(y_coord);
+                try testing.expectEqual(@intFromEnum(original), @intFromEnum(recovered));
+            }
+        }
+
+        test "integration: YardLine: works with Field coordinate system" {
+            const f = field.Field.init(std.testing.allocator);
+            
+            // Test that YardLine coordinates are valid field positions
+            const midfield = field.YardLine.midfield;
+            const mid_coord = field.Coordinate.init(field.FIELD_WIDTH_YARDS / 2, midfield.toYCoordinate());
+            try testing.expect(f.contains(mid_coord.x, mid_coord.y));
+            try testing.expect(!mid_coord.isInEndZone());
+            
+            // Test goal line positions
+            const south_goal = field.YardLine.south_goal;
+            const south_coord = field.Coordinate.init(field.FIELD_WIDTH_YARDS / 2, south_goal.toYCoordinate());
+            try testing.expect(f.contains(south_coord.x, south_coord.y));
+            try testing.expect(!south_coord.isInEndZone()); // Goal line is not in endzone
+            
+            const north_goal = field.YardLine.north_goal;
+            const north_coord = field.Coordinate.init(field.FIELD_WIDTH_YARDS / 2, north_goal.toYCoordinate());
+            try testing.expect(f.contains(north_coord.x, north_coord.y));
+            try testing.expect(!north_coord.isInEndZone()); // Goal line is not in endzone
+        }
+
+        test "integration: YardLine: advance operations maintain consistency" {
+            // Test chain of advances
+            const start = try field.YardLine.fromInt(20);
+            const step1 = try start.advance(15); // Should be at 35
+            const step2 = try step1.advance(15); // Should be at 50
+            const step3 = try step2.advance(-30); // Should be at 20
+            
+            try testing.expectEqual(@as(u8, 35), @intFromEnum(step1));
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(step2));
+            try testing.expectEqual(@as(u8, 20), @intFromEnum(step3));
+            
+            // Verify round trip
+            try testing.expectEqual(@intFromEnum(start), @intFromEnum(step3));
+            
+            // Test that distance matches advance
+            const distance = start.distanceTo(step2);
+            const advanced = try start.advance(@intCast(distance));
+            try testing.expectEqual(@intFromEnum(step2), @intFromEnum(advanced));
+        }
+
+        test "integration: YardLine: field side transitions at midfield" {
+            // Test transition from own to opponent
+            const own_49 = try field.YardLine.fromInt(49);
+            const mid_50 = try own_49.advance(1);
+            const opp_51 = try mid_50.advance(1);
+            
+            try testing.expectEqual(field.FieldSide.own, own_49.getFieldSide());
+            try testing.expectEqual(field.FieldSide.midfield, mid_50.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, opp_51.getFieldSide());
+            
+            // Test transition from opponent to own
+            const back_50 = try opp_51.advance(-1);
+            const back_49 = try back_50.advance(-1);
+            
+            try testing.expectEqual(field.FieldSide.midfield, back_50.getFieldSide());
+            try testing.expectEqual(field.FieldSide.own, back_49.getFieldSide());
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌──────────────────────────── Scenario Tests ────────────────────────────┐
+
+        test "scenario: YardLine: typical kickoff position" {
+            // NFL kickoffs happen from the 35-yard line
+            const kickoff = try field.YardLine.fromInt(35);
+            
+            // Should be in own territory
+            try testing.expectEqual(field.FieldSide.own, kickoff.getFieldSide());
+            
+            // Format should show "Own 35"
+            var buffer: [100]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buffer);
+            try kickoff.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Own 35", stream.getWritten());
+            
+            // Should be 65 yards from opponent goal
+            const distance_to_goal = kickoff.distanceTo(field.YardLine.north_goal);
+            try testing.expectEqual(@as(i8, 65), distance_to_goal);
+        }
+
+        test "scenario: YardLine: red zone position" {
+            // Red zone is within 20 yards of goal (yard line 80+)
+            const red_zone_20 = try field.YardLine.fromInt(80);
+            const red_zone_10 = try field.YardLine.fromInt(90);
+            const red_zone_5 = try field.YardLine.fromInt(95);
+            
+            // All should be in opponent territory
+            try testing.expectEqual(field.FieldSide.opponent, red_zone_20.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, red_zone_10.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, red_zone_5.getFieldSide());
+            
+            // Check formatting
+            var buffer: [100]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buffer);
+            
+            try red_zone_20.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 20", stream.getWritten());
+            
+            stream.reset();
+            try red_zone_10.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 10", stream.getWritten());
+            
+            stream.reset();
+            try red_zone_5.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 5", stream.getWritten());
+        }
+
+        test "scenario: YardLine: field goal range" {
+            // Typical field goal range is within 35-40 yards
+            // This means ball at opponent's 35 or closer
+            const fg_35 = try field.YardLine.fromInt(65); // Opponent 35
+            const fg_30 = try field.YardLine.fromInt(70); // Opponent 30
+            const fg_25 = try field.YardLine.fromInt(75); // Opponent 25
+            
+            // Calculate kick distance (add 17 yards for endzone + holder position)
+            const kick_from_35 = fg_35.distanceTo(field.YardLine.north_goal) + 17; // 35 + 17 = 52 yards
+            const kick_from_30 = fg_30.distanceTo(field.YardLine.north_goal) + 17; // 30 + 17 = 47 yards
+            const kick_from_25 = fg_25.distanceTo(field.YardLine.north_goal) + 17; // 25 + 17 = 42 yards
+            
+            try testing.expectEqual(@as(i8, 52), kick_from_35);
+            try testing.expectEqual(@as(i8, 47), kick_from_30);
+            try testing.expectEqual(@as(i8, 42), kick_from_25);
+            
+            // All should be in opponent territory
+            try testing.expectEqual(field.FieldSide.opponent, fg_35.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, fg_30.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, fg_25.getFieldSide());
+        }
+
+        test "scenario: YardLine: drive progression" {
+            // Simulate a typical offensive drive
+            var ball = try field.YardLine.fromInt(25); // Start at own 25
+            
+            // First down: 7 yard run
+            ball = try ball.advance(7);
+            try testing.expectEqual(@as(u8, 32), @intFromEnum(ball));
+            try testing.expectEqual(field.FieldSide.own, ball.getFieldSide());
+            
+            // Second down: 15 yard pass
+            ball = try ball.advance(15);
+            try testing.expectEqual(@as(u8, 47), @intFromEnum(ball));
+            try testing.expectEqual(field.FieldSide.own, ball.getFieldSide());
+            
+            // Third down: 8 yard run to midfield
+            ball = try ball.advance(3);
+            try testing.expectEqual(@as(u8, 50), @intFromEnum(ball));
+            try testing.expectEqual(field.FieldSide.midfield, ball.getFieldSide());
+            
+            // First down: 20 yard pass into opponent territory
+            ball = try ball.advance(20);
+            try testing.expectEqual(@as(u8, 70), @intFromEnum(ball));
+            try testing.expectEqual(field.FieldSide.opponent, ball.getFieldSide());
+            
+            // Check we're at opponent 30
+            var buffer: [100]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&buffer);
+            try ball.format("", .{}, stream.writer());
+            try testing.expectEqualStrings("Opp 30", stream.getWritten());
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌──────────────────────────── Stress Tests ────────────────────────────┐
+
+        test "stress: YardLine: boundary value operations" {
+            // Test operations at boundaries
+            const zero = field.YardLine.south_goal;
+            const hundred = field.YardLine.north_goal;
+            
+            // Maximum valid advances
+            const max_forward = try zero.advance(100);
+            try testing.expectEqual(@as(u8, 100), @intFromEnum(max_forward));
+            
+            const max_backward = try hundred.advance(-100);
+            try testing.expectEqual(@as(u8, 0), @intFromEnum(max_backward));
+            
+            // Just within bounds
+            const almost_out_forward = try zero.advance(99);
+            try testing.expectEqual(@as(u8, 99), @intFromEnum(almost_out_forward));
+            
+            const almost_out_backward = try hundred.advance(-99);
+            try testing.expectEqual(@as(u8, 1), @intFromEnum(almost_out_backward));
+            
+            // Test all boundary values are valid
+            var i: u8 = 0;
+            while (i <= 100) : (i += 1) {
+                const yard_line = try field.YardLine.fromInt(i);
+                const y_coord = yard_line.toYCoordinate();
+                
+                // Verify coordinate is within expected range
+                try testing.expect(y_coord >= field.END_ZONE_LENGTH_YARDS);
+                try testing.expect(y_coord <= field.FIELD_LENGTH_YARDS - field.END_ZONE_LENGTH_YARDS);
+                
+                // Verify we can convert back
+                const recovered = try field.YardLine.fromYCoordinate(y_coord);
+                try testing.expectEqual(i, @intFromEnum(recovered));
+            }
+        }
+
+        test "stress: YardLine: extreme advance sequences" {
+            // Test many small advances
+            var position = try field.YardLine.fromInt(50);
+            var total_advance: i16 = 0;
+            
+            // Advance by 1 yard 30 times forward
+            var i: u8 = 0;
+            while (i < 30) : (i += 1) {
+                position = try position.advance(1);
+                total_advance += 1;
+            }
+            try testing.expectEqual(@as(u8, 80), @intFromEnum(position));
+            
+            // Advance by -2 yards 25 times backward
+            i = 0;
+            while (i < 25) : (i += 1) {
+                position = try position.advance(-2);
+                total_advance -= 2;
+            }
+            try testing.expectEqual(@as(u8, 30), @intFromEnum(position));
+            
+            // Verify total matches
+            try testing.expectEqual(@as(i16, -20), total_advance);
+            try testing.expectEqual(@as(u8, 30), @intFromEnum(position)); // 50 + (-20) = 30
+        }
+
+        test "stress: YardLine: fromYCoordinate edge cases" {
+            // Test coordinates just at the boundary of endzones
+            const just_in_play = try field.YardLine.fromYCoordinate(10.0); // Exactly at goal line
+            try testing.expectEqual(@as(u8, 0), @intFromEnum(just_in_play));
+            
+            const just_in_play_north = try field.YardLine.fromYCoordinate(110.0); // Exactly at north goal
+            try testing.expectEqual(@as(u8, 100), @intFromEnum(just_in_play_north));
+            
+            // Test that slightly in endzone fails
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(9.99));
+            try testing.expectError(error.InEndZone, field.YardLine.fromYCoordinate(110.01));
+            
+            // Test rounding near boundaries
+            const near_zero = try field.YardLine.fromYCoordinate(10.4); // Should round to 0
+            try testing.expectEqual(@as(u8, 0), @intFromEnum(near_zero));
+            
+            const near_hundred = try field.YardLine.fromYCoordinate(109.6); // Should round to 100
+            try testing.expectEqual(@as(u8, 100), @intFromEnum(near_hundred));
+        }
+
+        test "stress: YardLine: format with all possible values" {
+            var buffer: [100]u8 = undefined;
+            
+            // Test all 101 possible yard lines
+            var i: u8 = 0;
+            while (i <= 100) : (i += 1) {
+                var stream = std.io.fixedBufferStream(&buffer);
+                const yard_line = try field.YardLine.fromInt(i);
+                try yard_line.format("", .{}, stream.writer());
+                
+                // Verify format is correct
+                if (i == 50) {
+                    try testing.expectEqualStrings("Midfield", stream.getWritten());
+                } else if (i < 50) {
+                    var expected: [20]u8 = undefined;
+                    const expected_str = try std.fmt.bufPrint(&expected, "Own {d}", .{i});
+                    try testing.expectEqualStrings(expected_str, stream.getWritten());
+                } else {
+                    var expected: [20]u8 = undefined;
+                    const expected_str = try std.fmt.bufPrint(&expected, "Opp {d}", .{100 - i});
+                    try testing.expectEqualStrings(expected_str, stream.getWritten());
+                }
+            }
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+// ╔══════════════════════════════════════ FIELDSIDE TESTS ══════════════════════════════════════╗
+
+    // ┌──────────────────────────── Unit Tests ────────────────────────────┐
+
+        test "unit: FieldSide: enum values are distinct" {
+            // Test that all enum values are unique
+            const own = field.FieldSide.own;
+            const midfield = field.FieldSide.midfield;
+            const opponent = field.FieldSide.opponent;
+            
+            try testing.expect(own != midfield);
+            try testing.expect(own != opponent);
+            try testing.expect(midfield != opponent);
+        }
+
+        test "unit: FieldSide: enum values match YardLine logic" {
+            // Test that FieldSide values align with YardLine.getFieldSide
+            const yard_0 = try field.YardLine.fromInt(0);
+            const yard_25 = try field.YardLine.fromInt(25);
+            const yard_49 = try field.YardLine.fromInt(49);
+            const yard_50 = try field.YardLine.fromInt(50);
+            const yard_51 = try field.YardLine.fromInt(51);
+            const yard_75 = try field.YardLine.fromInt(75);
+            const yard_100 = try field.YardLine.fromInt(100);
+            
+            // Own territory
+            try testing.expectEqual(field.FieldSide.own, yard_0.getFieldSide());
+            try testing.expectEqual(field.FieldSide.own, yard_25.getFieldSide());
+            try testing.expectEqual(field.FieldSide.own, yard_49.getFieldSide());
+            
+            // Midfield
+            try testing.expectEqual(field.FieldSide.midfield, yard_50.getFieldSide());
+            
+            // Opponent territory
+            try testing.expectEqual(field.FieldSide.opponent, yard_51.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, yard_75.getFieldSide());
+            try testing.expectEqual(field.FieldSide.opponent, yard_100.getFieldSide());
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+// ╚══════════════════════════════════════════════════════════════════════════════════════════╗
