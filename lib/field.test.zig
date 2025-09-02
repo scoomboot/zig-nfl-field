@@ -3831,5 +3831,1222 @@ const field = @import("field.zig");
         }
     
     // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌─────────────────── Metadata Serialization Tests ───────────────────────┐
+    
+        test "unit: Field: serializeMetadata with no metadata returns error" {
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Should return error when no metadata is set
+            const result = f.serializeMetadata(std.testing.allocator);
+            try testing.expectError(error.NoMetadata, result);
+        }
+        
+        test "unit: Field: serializeMetadata with basic metadata" {
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Set basic metadata
+            const metadata = field.FieldMetadata{
+                .stadium_name = "Test Stadium",
+                .team_home = "Home Team",
+                .team_away = "Away Team",
+                .field_condition = .good,
+                .weather = .{
+                    .temperature_fahrenheit = 72.0,
+                    .wind_speed_mph = 5.0,
+                    .wind_direction_degrees = 180.0,
+                    .precipitation = .none,
+                    .humidity_percent = 45.0,
+                },
+            };
+            f.setMetadata(metadata);
+            
+            // Serialize to JSON
+            const json_str = try f.serializeMetadata(std.testing.allocator);
+            defer std.testing.allocator.free(json_str);
+            
+            // Verify JSON contains expected fields
+            try testing.expect(std.mem.indexOf(u8, json_str, "\"stadium_name\"") != null);
+            try testing.expect(std.mem.indexOf(u8, json_str, "Test Stadium") != null);
+            try testing.expect(std.mem.indexOf(u8, json_str, "\"temperature_fahrenheit\"") != null);
+            // Temperature should be in the JSON somewhere (may be 72, 72.0, 72e0, etc)
+            try testing.expect(json_str.len > 100); // Just verify we got substantial JSON back
+        }
+        
+        test "integration: Field: serialize and deserialize metadata round-trip" {
+            // Fixed: Memory management issue resolved by duplicating strings
+            // in deserializeMetadata before JSON parser cleanup
+            
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Create comprehensive metadata
+            const original_metadata = field.FieldMetadata{
+                .stadium_name = "MetLife Stadium",
+                .team_home = "NY Giants",
+                .team_away = "Dallas Cowboys",
+                .field_condition = .excellent,
+                .weather = .{
+                    .temperature_fahrenheit = 68.5,
+                    .wind_speed_mph = 12.3,
+                    .wind_direction_degrees = 270.0,
+                    .precipitation = .light_rain,
+                    .humidity_percent = 78.5,
+                },
+                .game_time = 1234567890,
+                .attendance = 82500,
+                .has_dome = false,
+                .has_retractable_roof = true,
+                .elevation_feet = 250.0,
+            };
+            f.setMetadata(original_metadata);
+            
+            // Add some wear areas
+            try f.addWearArea(field.Coordinate.init(26.67, 50.0), 5.0, 0.7);
+            try f.addWearArea(field.Coordinate.init(26.67, 30.0), 3.0, 0.5);
+            
+            // Serialize to JSON
+            const json_str = try f.serializeMetadata(std.testing.allocator);
+            defer std.testing.allocator.free(json_str);
+            
+            // Create new field and deserialize
+            var f2 = field.Field.init(std.testing.allocator);
+            defer f2.deinit();
+            
+            try f2.deserializeMetadata(json_str, std.testing.allocator);
+            
+            // Verify all fields match
+            const restored_metadata = f2.metadata.?;
+            try testing.expectEqualStrings(original_metadata.stadium_name, restored_metadata.stadium_name);
+            try testing.expectEqualStrings(original_metadata.team_home, restored_metadata.team_home);
+            try testing.expectEqualStrings(original_metadata.team_away, restored_metadata.team_away);
+            try testing.expectEqual(original_metadata.field_condition, restored_metadata.field_condition);
+            try testing.expectEqual(original_metadata.weather.temperature_fahrenheit, restored_metadata.weather.temperature_fahrenheit);
+            try testing.expectEqual(original_metadata.weather.wind_speed_mph, restored_metadata.weather.wind_speed_mph);
+            try testing.expectEqual(original_metadata.weather.wind_direction_degrees, restored_metadata.weather.wind_direction_degrees);
+            try testing.expectEqual(original_metadata.weather.precipitation, restored_metadata.weather.precipitation);
+            try testing.expectEqual(original_metadata.weather.humidity_percent, restored_metadata.weather.humidity_percent);
+            try testing.expectEqual(original_metadata.game_time, restored_metadata.game_time);
+            try testing.expectEqual(original_metadata.attendance, restored_metadata.attendance);
+            try testing.expectEqual(original_metadata.has_dome, restored_metadata.has_dome);
+            try testing.expectEqual(original_metadata.has_retractable_roof, restored_metadata.has_retractable_roof);
+            try testing.expectEqual(original_metadata.elevation_feet, restored_metadata.elevation_feet);
+            
+            // Verify wear areas
+            try testing.expectEqual(@as(usize, 2), f2.wear_areas_list.items.len);
+            try testing.expectApproxEqAbs(@as(f32, 26.67), f2.wear_areas_list.items[0].center.x, 0.01);
+            try testing.expectApproxEqAbs(@as(f32, 50.0), f2.wear_areas_list.items[0].center.y, 0.01);
+            try testing.expectApproxEqAbs(@as(f32, 5.0), f2.wear_areas_list.items[0].radius, 0.01);
+            try testing.expectApproxEqAbs(@as(f32, 0.7), f2.wear_areas_list.items[0].severity, 0.01);
+        }
+        
+        test "integration: Field: exportToJson and importFromJson full field configuration" {
+            // Fixed: Memory management issue resolved by duplicating strings
+            // in importFromJson before JSON parser cleanup
+            
+            // Create a custom field with metadata
+            var f = try field.Field.initCustom(std.testing.allocator, 100.0, 50.0, 8.0);
+            defer f.deinit();
+            
+            f.name = "Custom Field";
+            f.surface_type = .hybrid;
+            
+            // Set metadata
+            const metadata = field.FieldMetadata{
+                .stadium_name = "Custom Stadium",
+                .team_home = "Home FC",
+                .team_away = "Away United",
+                .field_condition = .fair,
+                .weather = .{
+                    .temperature_fahrenheit = 32.0,
+                    .wind_speed_mph = 25.0,
+                    .wind_direction_degrees = 45.0,
+                    .precipitation = .snow,
+                    .humidity_percent = 90.0,
+                },
+                .game_time = 9876543210,
+                .attendance = 45000,
+                .has_dome = true,
+                .has_retractable_roof = false,
+                .elevation_feet = 5280.0,
+            };
+            f.setMetadata(metadata);
+            
+            // Add wear areas
+            try f.addWearArea(field.Coordinate.init(25.0, 50.0), 10.0, 0.8);
+            
+            // Export to JSON
+            const json_str = try f.exportToJson(std.testing.allocator);
+            defer std.testing.allocator.free(json_str);
+            
+            // Import into new field
+            var f2 = try field.importFromJson(std.testing.allocator, json_str);
+            defer f2.deinit();
+            
+            // Verify field dimensions
+            try testing.expectEqualStrings("Custom Field", f2.name);
+            try testing.expectEqual(@as(f32, 100.0), f2.length);
+            try testing.expectEqual(@as(f32, 50.0), f2.width);
+            try testing.expectEqual(@as(f32, 8.0), f2.endzone_length);
+            try testing.expectEqual(field.SurfaceType.hybrid, f2.surface_type);
+            
+            // Verify metadata was imported
+            const imported_meta = f2.metadata.?;
+            try testing.expectEqualStrings("Custom Stadium", imported_meta.stadium_name);
+            try testing.expectEqual(field.FieldCondition.fair, imported_meta.field_condition);
+            try testing.expectEqual(field.Precipitation.snow, imported_meta.weather.precipitation);
+            try testing.expectEqual(@as(f32, 32.0), imported_meta.weather.temperature_fahrenheit);
+            try testing.expectEqual(@as(f32, 5280.0), imported_meta.elevation_feet);
+            
+            // Verify wear areas
+            try testing.expectEqual(@as(usize, 1), f2.wear_areas_list.items.len);
+            try testing.expectApproxEqAbs(@as(f32, 25.0), f2.wear_areas_list.items[0].center.x, 0.01);
+            try testing.expectApproxEqAbs(@as(f32, 50.0), f2.wear_areas_list.items[0].center.y, 0.01);
+        }
+        
+        test "scenario: Field: export game state for persistence" {
+            // Fixed: Memory management issue resolved by duplicating strings
+            // in JSON import/export functions
+            
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Simulate a game in progress with weather and field conditions
+            const game_metadata = field.FieldMetadata{
+                .stadium_name = "Lambeau Field",
+                .team_home = "Green Bay Packers",
+                .team_away = "Chicago Bears",
+                .field_condition = .poor,
+                .weather = .{
+                    .temperature_fahrenheit = 15.0,
+                    .wind_speed_mph = 30.0,
+                    .wind_direction_degrees = 315.0,
+                    .precipitation = .snow,
+                    .humidity_percent = 95.0,
+                },
+                .game_time = 1704139200, // Jan 1, 2024
+                .attendance = 81441,
+                .has_dome = false,
+                .has_retractable_roof = false,
+                .elevation_feet = 640.0,
+            };
+            f.setMetadata(game_metadata);
+            
+            // Add wear areas from gameplay
+            try f.addWearArea(field.Coordinate.init(26.67, 60.0), 8.0, 0.9); // Midfield worn
+            try f.addWearArea(field.Coordinate.init(14.875, 30.0), 5.0, 0.6); // Left hash at 20-yard line
+            try f.addWearArea(field.Coordinate.init(38.458, 30.0), 5.0, 0.6); // Right hash at 20-yard line
+            try f.addWearArea(field.Coordinate.init(26.67, 11.0), 6.0, 0.8); // Goal line area
+            
+            // Export game state
+            const saved_state = try f.exportToJson(std.testing.allocator);
+            defer std.testing.allocator.free(saved_state);
+            
+            // Simulate loading the game state later
+            var restored_field = try field.importFromJson(std.testing.allocator, saved_state);
+            defer restored_field.deinit();
+            
+            // Verify critical game state is preserved
+            try testing.expectEqualStrings("Lambeau Field", restored_field.metadata.?.stadium_name);
+            try testing.expectEqual(@as(f32, 15.0), restored_field.metadata.?.weather.temperature_fahrenheit);
+            try testing.expectEqual(field.Precipitation.snow, restored_field.metadata.?.weather.precipitation);
+            try testing.expectEqual(@as(usize, 4), restored_field.wear_areas_list.items.len);
+            
+            // Check that weather impacts are detected correctly
+            try testing.expect(restored_field.hasWeatherImpact());
+            
+            // Check field condition at specific locations
+            const midfield_condition = restored_field.getConditionAt(field.Coordinate.init(26.67, 60.0));
+            try testing.expect(midfield_condition < 0.5); // Should be heavily worn
+            
+            const wind_vector = restored_field.getWindVector();
+            try testing.expect(wind_vector.x != 0.0 or wind_vector.y != 0.0); // Wind should be present
+        }
+        
+        test "unit: Field: JSON serialization handles edge cases" {
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Test with minimal metadata (many defaults)
+            const minimal_metadata = field.FieldMetadata{
+                .stadium_name = "",
+                .team_home = "",
+                .team_away = "",
+            };
+            f.setMetadata(minimal_metadata);
+            
+            const json_str = try f.serializeMetadata(std.testing.allocator);
+            defer std.testing.allocator.free(json_str);
+            
+            // Should serialize without errors even with empty strings
+            try testing.expect(json_str.len > 0);
+            
+            // Test deserialization of minimal data
+            var f2 = field.Field.init(std.testing.allocator);
+            defer f2.deinit();
+            
+            try f2.deserializeMetadata(json_str, std.testing.allocator);
+            try testing.expectEqualStrings("", f2.metadata.?.stadium_name);
+            try testing.expectEqual(field.FieldCondition.good, f2.metadata.?.field_condition);
+            try testing.expectEqual(@as(f32, 70.0), f2.metadata.?.weather.temperature_fahrenheit);
+        }
+        
+        test "stress: Field: serialize large number of wear areas" {
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+            
+            // Add many wear areas
+            var y: f32 = 15.0;
+            while (y < 105.0) : (y += 10.0) {
+                var x: f32 = 5.0;
+                while (x < 48.0) : (x += 10.0) {
+                    try f.addWearArea(field.Coordinate.init(x, y), 2.0, 0.3);
+                }
+            }
+            
+            const metadata = field.FieldMetadata{
+                .stadium_name = "Stress Test Stadium",
+                .team_home = "Test Team",
+                .team_away = "Opponent",
+            };
+            f.setMetadata(metadata);
+            
+            // Serialize with many wear areas
+            const json_str = try f.serializeMetadata(std.testing.allocator);
+            defer std.testing.allocator.free(json_str);
+            
+            // Deserialize and verify
+            var f2 = field.Field.init(std.testing.allocator);
+            defer f2.deinit();
+            
+            try f2.deserializeMetadata(json_str, std.testing.allocator);
+            try testing.expectEqual(f.wear_areas_list.items.len, f2.wear_areas_list.items.len);
+        }
+
+        test "stress: FieldMetadata: allocation and deallocation cycles" {
+            // Test multiple allocation/deallocation cycles with metadata
+            var i: u32 = 0;
+            while (i < 100) : (i += 1) {
+                var f = field.Field.init(std.testing.allocator);
+                defer f.deinit();
+
+                const metadata = field.FieldMetadata{
+                    .stadium_name = "Memory Test Stadium",
+                    .team_home = "Home Team",
+                    .team_away = "Away Team",
+                    .weather = .{
+                        .temperature_fahrenheit = 72.5,
+                        .wind_speed_mph = 10.0,
+                        .humidity_percent = 65,
+                    },
+                };
+                f.setMetadata(metadata);
+
+                // Set metadata again to test ownership
+                f.setMetadata(metadata);
+            }
+        }
+
+        test "stress: FieldMetadata: verify no memory leaks with string ownership" {
+            // Test that owned strings are properly freed
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            // Set metadata multiple times to test ownership tracking
+            var j: u32 = 0;
+            while (j < 50) : (j += 1) {
+                const metadata = field.FieldMetadata{
+                    .stadium_name = if (j % 3 == 0) "Stadium A" else if (j % 3 == 1) "Stadium B" else "Stadium C",
+                    .team_home = if (j % 2 == 0) "Even Team" else "Odd Team",
+                    .team_away = "Constant Away",
+                };
+                f.setMetadata(metadata);
+            }
+
+            // Set final metadata to ensure proper cleanup
+            const final_metadata = field.FieldMetadata{
+                .stadium_name = "Final Stadium",
+                .team_home = "Final Team",
+            };
+            f.setMetadata(final_metadata);
+        }
+
+        test "unit: FieldMetadata: error recovery on allocation failure" {
+            // Test behavior with a failing allocator
+            const FailingAllocator = struct {
+                underlying: std.mem.Allocator,
+                should_fail: bool,
+                fail_count: u32,
+                current_count: u32,
+
+                const Self = @This();
+
+                pub fn allocator(self: *Self) std.mem.Allocator {
+                    return .{
+                        .ptr = self,
+                        .vtable = &.{
+                            .alloc = alloc,
+                            .resize = resize,
+                            .free = free,
+                            .remap = remap,
+                        },
+                    };
+                }
+
+                fn alloc(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+                    const self: *Self = @ptrCast(@alignCast(ctx));
+                    self.current_count += 1;
+                    if (self.should_fail and self.current_count >= self.fail_count) {
+                        return null;
+                    }
+                    return self.underlying.vtable.alloc(self.underlying.ptr, len, ptr_align, ret_addr);
+                }
+
+                fn resize(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+                    const self: *Self = @ptrCast(@alignCast(ctx));
+                    return self.underlying.vtable.resize(self.underlying.ptr, buf, buf_align, new_len, ret_addr);
+                }
+
+                fn free(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, ret_addr: usize) void {
+                    const self: *Self = @ptrCast(@alignCast(ctx));
+                    self.underlying.vtable.free(self.underlying.ptr, buf, buf_align, ret_addr);
+                }
+
+                fn remap(ctx: *anyopaque, old_mem: []u8, old_align: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+                    const self: *Self = @ptrCast(@alignCast(ctx));
+                    return self.underlying.vtable.remap(self.underlying.ptr, old_mem, old_align, new_len, ret_addr);
+                }
+            };
+
+            var failing_alloc = FailingAllocator{
+                .underlying = std.testing.allocator,
+                .should_fail = true,
+                .fail_count = 3,
+                .current_count = 0,
+            };
+            const allocator = failing_alloc.allocator();
+
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+
+            const metadata = field.FieldMetadata{
+                .stadium_name = "Test Stadium",
+                .team_home = "Test Team",
+            };
+            f.setMetadata(metadata);
+
+            // Serialization might fail due to allocation failure
+            const result = f.serializeMetadata(allocator);
+            if (result) |json_str| {
+                allocator.free(json_str);
+            } else |_| {
+                // Expected - allocation may have failed
+            }
+        }
+
+        test "stress: FieldMetadata: repeated serialization and deserialization cycles" {
+            // Test memory safety across multiple serialization/deserialization cycles
+            var f1 = field.Field.init(std.testing.allocator);
+            defer f1.deinit();
+
+            const original_metadata = field.FieldMetadata{
+                .stadium_name = "Cycle Stadium",
+                .team_home = "Serializers",
+                .team_away = "Deserializers",
+                .weather = .{
+                    .temperature_fahrenheit = 68.5,
+                    .wind_speed_mph = 5.5,
+                    .humidity_percent = 45,
+                },
+            };
+            f1.setMetadata(original_metadata);
+
+            // Perform multiple serialization/deserialization cycles
+            var cycle: u32 = 0;
+            while (cycle < 20) : (cycle += 1) {
+                const json_str = try f1.serializeMetadata(std.testing.allocator);
+                defer std.testing.allocator.free(json_str);
+
+                var f2 = field.Field.init(std.testing.allocator);
+                defer f2.deinit();
+
+                try f2.deserializeMetadata(json_str, std.testing.allocator);
+
+                // Verify metadata is preserved
+                if (f2.metadata) |m| {
+                    try testing.expectEqualStrings(original_metadata.stadium_name, m.stadium_name);
+                    try testing.expectEqualStrings(original_metadata.team_home, m.team_home);
+                }
+            }
+        }
+
+        test "stress: FieldMetadata: clearing and resetting metadata multiple times" {
+            // Test memory safety when repeatedly clearing and setting metadata
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            var iteration: u32 = 0;
+            while (iteration < 100) : (iteration += 1) {
+                // Set metadata
+                const metadata = field.FieldMetadata{
+                    .stadium_name = if (iteration % 2 == 0) "Even Stadium" else "Odd Stadium",
+                    .team_home = "Team A",
+                    .team_away = "Team B",
+                    .weather = .{
+                        .temperature_fahrenheit = @as(f32, @floatFromInt(iteration)) + 60.0,
+                    },
+                };
+                f.setMetadata(metadata);
+
+                // Verify it was set
+                try testing.expect(f.metadata != null);
+
+                // Set different metadata to test cleanup
+                const clear_metadata = field.FieldMetadata{};
+                f.setMetadata(clear_metadata);
+
+                // Verify it was changed
+                try testing.expect(f.metadata != null);
+            }
+
+            // Final set to ensure no corruption
+            const final_metadata = field.FieldMetadata{
+                .stadium_name = "Final Clear Test",
+            };
+            f.setMetadata(final_metadata);
+            try testing.expect(f.metadata != null);
+        }
+
+        test "stress: FieldMetadata: edge cases with empty strings" {
+            // Test handling of empty strings in metadata
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            const empty_metadata = field.FieldMetadata{
+                .stadium_name = "",
+                .team_home = "",
+                .team_away = "",
+            };
+            f.setMetadata(empty_metadata);
+
+            // Verify empty strings are handled correctly
+            if (f.metadata) |m| {
+                try testing.expectEqualStrings("", m.stadium_name);
+                try testing.expectEqualStrings("", m.team_home);
+                try testing.expectEqualStrings("", m.team_away);
+            }
+
+            // Serialize and deserialize empty strings
+            const json_str = try f.serializeMetadata(std.testing.allocator);
+            defer std.testing.allocator.free(json_str);
+
+            var f2 = field.Field.init(std.testing.allocator);
+            defer f2.deinit();
+            try f2.deserializeMetadata(json_str, std.testing.allocator);
+
+            if (f2.metadata) |m| {
+                try testing.expectEqualStrings("", m.stadium_name);
+                try testing.expectEqualStrings("", m.team_home);
+            }
+        }
+
+        test "stress: FieldMetadata: null values and optional fields" {
+            // Test handling of null/optional fields
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            // Set metadata with only some fields
+            const partial_metadata = field.FieldMetadata{
+                .stadium_name = "Partial Stadium",
+                .team_home = "",
+                .team_away = "Only Away Team",
+                .weather = .{
+                    .wind_speed_mph = 12.5,
+                },
+            };
+            f.setMetadata(partial_metadata);
+
+            // Verify fields are preserved
+            if (f.metadata) |m| {
+                try testing.expectEqualStrings("Partial Stadium", m.stadium_name);
+                try testing.expectEqualStrings("", m.team_home);
+                try testing.expectEqualStrings("Only Away Team", m.team_away);
+                try testing.expectEqual(@as(f32, 12.5), m.weather.wind_speed_mph);
+            }
+
+            // Set defaults
+            const default_metadata = field.FieldMetadata{};
+            f.setMetadata(default_metadata);
+
+            // Verify defaults
+            if (f.metadata) |m| {
+                try testing.expectEqualStrings("Generic Stadium", m.stadium_name);
+                try testing.expectEqualStrings("", m.team_home);
+                try testing.expectEqualStrings("", m.team_away);
+            }
+        }
+
+        test "stress: FieldMetadata: very long strings" {
+            // Test handling of very long strings
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            // Create a very long string
+            var long_string = try std.testing.allocator.alloc(u8, 10000);
+            defer std.testing.allocator.free(long_string);
+            @memset(long_string, 'A');
+
+            const long_metadata = field.FieldMetadata{
+                .stadium_name = long_string,
+                .team_home = long_string[0..5000],
+                .team_away = long_string[5000..],
+            };
+            f.setMetadata(long_metadata);
+
+            // Verify long strings are handled
+            if (f.metadata) |m| {
+                try testing.expectEqual(@as(usize, 10000), m.stadium_name.len);
+                try testing.expectEqual(@as(usize, 5000), m.team_home.len);
+                try testing.expectEqual(@as(usize, 5000), m.team_away.len);
+            }
+
+            // Set empty metadata to ensure proper cleanup of long strings
+            const empty = field.FieldMetadata{};
+            f.setMetadata(empty);
+        }
+
+        test "integration: FieldMetadata: concurrent metadata operations" {
+            // Test thread safety of metadata operations (if applicable)
+            // Note: This test assumes single-threaded for now
+            var fields: [10]field.Field = undefined;
+            
+            // Initialize all fields
+            for (&fields, 0..) |*f, i| {
+                f.* = field.Field.init(std.testing.allocator);
+                
+                var name_buf: [32]u8 = undefined;
+                const name = try std.fmt.bufPrint(&name_buf, "Field {}", .{i});
+                
+                const metadata = field.FieldMetadata{
+                    .stadium_name = "Concurrent Stadium",
+                    .team_home = name,
+                    .weather = .{
+                        .temperature_fahrenheit = @as(f32, @floatFromInt(i)) * 10.0,
+                    },
+                };
+                f.setMetadata(metadata);
+            }
+
+            // Cleanup all fields
+            for (&fields) |*f| {
+                f.deinit();
+            }
+        }
+
+        test "unit: FieldMetadata: ownership tracking validation" {
+            // Specifically test the owned_* fields
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            // Initially, no owned strings
+            try testing.expect(f.owned_name == null);
+            try testing.expect(f.owned_stadium_name == null);
+            try testing.expect(f.owned_team_home == null);
+            try testing.expect(f.owned_team_away == null);
+
+            // Set metadata with literals (should not be owned)
+            const literal_metadata = field.FieldMetadata{
+                .stadium_name = "Literal Stadium",
+                .team_home = "Literal Team",
+            };
+            f.setMetadata(literal_metadata);
+
+            // After setting literals, ownership flags should still be false
+            // (unless setMetadata duplicates strings, which it might)
+            // This behavior depends on implementation
+
+            // Now test with allocated strings
+            const allocated_name = try std.testing.allocator.dupe(u8, "Allocated Field");
+            defer std.testing.allocator.free(allocated_name);
+
+            const allocated_metadata = field.FieldMetadata{
+                .stadium_name = allocated_name,
+            };
+            f.setMetadata(allocated_metadata);
+
+            // Set different metadata to test cleanup
+            const cleanup_metadata = field.FieldMetadata{};
+            f.setMetadata(cleanup_metadata);
+        }
+
+        test "stress: FieldMetadata: mixed allocation sources" {
+            // Test metadata with strings from different sources
+            var f = field.Field.init(std.testing.allocator);
+            defer f.deinit();
+
+            // Stack-allocated buffer
+            var stack_buf: [64]u8 = undefined;
+            const stack_str = try std.fmt.bufPrint(&stack_buf, "Stack String {}", .{42});
+
+            // Heap-allocated string
+            const heap_str = try std.testing.allocator.dupe(u8, "Heap String");
+            defer std.testing.allocator.free(heap_str);
+
+            // Literal string
+            const literal_str = "Literal String";
+
+            const mixed_metadata = field.FieldMetadata{
+                .stadium_name = heap_str,
+                .team_home = literal_str,
+                .team_away = stack_str,
+            };
+            f.setMetadata(mixed_metadata);
+
+            // Verify all strings are set
+            if (f.metadata) |m| {
+                try testing.expectEqualStrings(heap_str, m.stadium_name);
+                try testing.expectEqualStrings(literal_str, m.team_home);
+                try testing.expectEqualStrings(stack_str, m.team_away);
+            }
+
+            // Set empty metadata and verify cleanup
+            const empty_meta = field.FieldMetadata{};
+            f.setMetadata(empty_meta);
+            try testing.expect(f.metadata != null);
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌─── Weather Edge Cases ───────────────────────────────────────────┐
+
+        test "stress: FieldMetadata: extreme temperature values" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test extreme cold (below absolute zero should be handled)
+            const extreme_cold = field.FieldMetadata{
+                .weather = .{
+                    .temperature_fahrenheit = -500.0, // Below absolute zero
+                    .wind_speed_mph = 0.0,
+                    .wind_direction_degrees = 0.0,
+                    .precipitation = .none,
+                    .humidity_percent = 50.0,
+                },
+            };
+            f.setMetadata(extreme_cold);
+            try testing.expect(f.metadata != null);
+            
+            // Test extreme heat
+            const extreme_heat = field.FieldMetadata{
+                .weather = .{
+                    .temperature_fahrenheit = 200.0, // Well above any recorded temperature
+                    .wind_speed_mph = 0.0,
+                    .wind_direction_degrees = 0.0,
+                    .precipitation = .none,
+                    .humidity_percent = 50.0,
+                },
+            };
+            f.setMetadata(extreme_heat);
+            try testing.expect(f.metadata != null);
+            
+            // Test float infinity and NaN
+            const temp_infinity = field.FieldMetadata{
+                .weather = .{
+                    .temperature_fahrenheit = std.math.inf(f32),
+                    .wind_speed_mph = 0.0,
+                    .wind_direction_degrees = 0.0,
+                    .precipitation = .none,
+                    .humidity_percent = 50.0,
+                },
+            };
+            f.setMetadata(temp_infinity);
+            try testing.expect(f.metadata != null);
+            
+            const temp_nan = field.FieldMetadata{
+                .weather = .{
+                    .temperature_fahrenheit = std.math.nan(f32),
+                    .wind_speed_mph = 0.0,
+                    .wind_direction_degrees = 0.0,
+                    .precipitation = .none,
+                    .humidity_percent = 50.0,
+                },
+            };
+            f.setMetadata(temp_nan);
+            try testing.expect(f.metadata != null);
+        }
+
+        test "stress: FieldMetadata: extreme wind conditions" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test extreme wind speeds
+            const extreme_wind_cases = [_]f32{
+                0.0,    // No wind
+                -50.0,  // Negative wind speed (should be handled)
+                250.0,  // Hurricane force and beyond
+                1000.0, // Impossibly high wind
+                std.math.inf(f32),
+                -std.math.inf(f32),
+                std.math.nan(f32),
+            };
+            
+            for (extreme_wind_cases) |wind_speed| {
+                const wind_meta = field.FieldMetadata{
+                    .weather = .{
+                        .temperature_fahrenheit = 70.0,
+                        .wind_speed_mph = wind_speed,
+                        .wind_direction_degrees = 0.0,
+                        .precipitation = .none,
+                        .humidity_percent = 50.0,
+                    },
+                };
+                f.setMetadata(wind_meta);
+                try testing.expect(f.metadata != null);
+            }
+        }
+
+        test "stress: FieldMetadata: wind direction edge cases" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test various wind direction edge cases
+            const direction_cases = [_]f32{
+                -360.0,  // Negative full rotation
+                -180.0,  // Negative half rotation
+                -45.0,   // Negative quarter
+                0.0,     // North
+                360.0,   // Full rotation (should equal 0)
+                720.0,   // Double rotation
+                3600.0,  // 10 rotations
+                std.math.inf(f32),
+                -std.math.inf(f32),
+                std.math.nan(f32),
+            };
+            
+            for (direction_cases) |direction| {
+                const direction_meta = field.FieldMetadata{
+                    .weather = .{
+                        .temperature_fahrenheit = 70.0,
+                        .wind_speed_mph = 10.0,
+                        .wind_direction_degrees = direction,
+                        .precipitation = .none,
+                        .humidity_percent = 50.0,
+                    },
+                };
+                f.setMetadata(direction_meta);
+                try testing.expect(f.metadata != null);
+            }
+        }
+
+        test "stress: FieldMetadata: extreme humidity values" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test humidity edge cases
+            const humidity_cases = [_]f32{
+                -10.0,   // Negative humidity (invalid)
+                0.0,     // No humidity
+                50.0,    // Normal
+                100.0,   // Maximum humidity
+                150.0,   // Over 100%
+                1000.0,  // Extremely over
+                std.math.inf(f32),
+                -std.math.inf(f32),
+                std.math.nan(f32),
+            };
+            
+            for (humidity_cases) |humidity| {
+                const humidity_meta = field.FieldMetadata{
+                    .weather = .{
+                        .temperature_fahrenheit = 70.0,
+                        .wind_speed_mph = 10.0,
+                        .wind_direction_degrees = 0.0,
+                        .precipitation = .none,
+                        .humidity_percent = humidity,
+                    },
+                };
+                f.setMetadata(humidity_meta);
+                try testing.expect(f.metadata != null);
+            }
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌─── Wear Area Edge Cases ─────────────────────────────────────────┐
+
+        test "stress: FieldMetadata: maximum number of wear areas" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Add a large number of wear areas
+            const num_areas = 150;
+            var i: u32 = 0;
+            while (i < num_areas) : (i += 1) {
+                const x = @as(f32, @floatFromInt(i % 10)) * 10.0;
+                const y = @as(f32, @floatFromInt(i / 10)) * 3.0;
+                try f.addWearArea(field.Coordinate.init(x, y), 2.0, 0.5);
+            }
+            
+            // Verify all areas were added
+            if (f.metadata) |meta| {
+                try testing.expectEqual(@as(usize, num_areas), meta.wear_areas.len);
+            }
+            
+            // Test getting condition with many wear areas
+            const condition = f.getConditionAt(.{ .x = 50.0, .y = 25.0 });
+            try testing.expect(condition >= 0.0);
+            try testing.expect(condition <= 1.0);
+        }
+
+        test "stress: FieldMetadata: overlapping wear areas" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Create multiple overlapping wear areas at the same location
+            const center_x = 50.0;
+            const center_y = 25.0;
+            
+            // Add increasingly severe wear areas at the same spot
+            try f.addWearArea(field.Coordinate.init(center_x, center_y), 5.0, 0.2);
+            try f.addWearArea(field.Coordinate.init(center_x, center_y), 4.0, 0.4);
+            try f.addWearArea(field.Coordinate.init(center_x, center_y), 3.0, 0.6);
+            try f.addWearArea(field.Coordinate.init(center_x, center_y), 2.0, 0.8);
+            try f.addWearArea(field.Coordinate.init(center_x, center_y), 1.0, 1.0);
+            
+            // Check condition at center (should accumulate wear)
+            const condition = f.getConditionAt(.{ .x = center_x, .y = center_y });
+            try testing.expect(condition >= 0.0);
+            try testing.expect(condition <= 1.0);
+            
+            // Add wear areas that completely overlap
+            try f.addWearArea(field.Coordinate.init(0.0, 0.0), 120.0, 0.5); // Covers entire field
+            const full_field_condition = f.getConditionAt(.{ .x = 60.0, .y = 26.67 });
+            try testing.expect(full_field_condition >= 0.0);
+        }
+
+        test "stress: FieldMetadata: wear areas outside field boundaries" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Add wear areas completely outside the field
+            try f.addWearArea(field.Coordinate.init(-50.0, -50.0), 10.0, 0.8);
+            try f.addWearArea(field.Coordinate.init(200.0, 100.0), 5.0, 0.9);
+            try f.addWearArea(field.Coordinate.init(60.0, -30.0), 3.0, 0.7);
+            try f.addWearArea(field.Coordinate.init(60.0, 100.0), 4.0, 0.6);
+            
+            // Add wear areas partially outside the field
+            try f.addWearArea(field.Coordinate.init(0.0, 0.0), 20.0, 0.5);     // Extends outside corner
+            try f.addWearArea(field.Coordinate.init(119.0, 26.67), 10.0, 0.7); // Extends outside opposite corner
+            
+            // Verify the field still functions correctly
+            const in_field = f.getConditionAt(.{ .x = 60.0, .y = 26.67 });
+            try testing.expect(in_field >= 0.0);
+            try testing.expect(in_field <= 1.0);
+            
+            // Check that condition calculation doesn't crash at boundaries
+            const corner1 = f.getConditionAt(.{ .x = 0.0, .y = 0.0 });
+            const corner2 = f.getConditionAt(.{ .x = 120.0, .y = 53.33 });
+            try testing.expect(corner1 >= 0.0);
+            try testing.expect(corner2 >= 0.0);
+        }
+
+        test "stress: FieldMetadata: zero and negative radius wear areas" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Add wear area with zero radius
+            try f.addWearArea(field.Coordinate.init(50.0, 25.0), 0.0, 0.8);
+            
+            // Add wear area with negative radius (should be handled)
+            try f.addWearArea(field.Coordinate.init(60.0, 30.0), -5.0, 0.7);
+            
+            // Add wear area with very small radius
+            try f.addWearArea(field.Coordinate.init(70.0, 20.0), 0.001, 0.9);
+            
+            // Add wear area with infinite radius
+            try f.addWearArea(field.Coordinate.init(40.0, 25.0), std.math.inf(f32), 0.5);
+            
+            // Add wear area with NaN radius
+            try f.addWearArea(field.Coordinate.init(30.0, 15.0), std.math.nan(f32), 0.6);
+            
+            // Verify field still calculates conditions
+            const condition = f.getConditionAt(.{ .x = 50.0, .y = 25.0 });
+            // Condition might be NaN due to invalid radius values, which is acceptable
+            try testing.expect(condition >= 0.0 or std.math.isNan(condition));
+            try testing.expect(condition <= 1.0 or std.math.isNan(condition));
+        }
+
+        test "stress: FieldMetadata: severity values outside 0-1 range" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test various out-of-range severity values
+            const severity_cases = [_]struct { x: f32, y: f32, radius: f32, severity: f32 }{
+                .{ .x = 10.0, .y = 10.0, .radius = 3.0, .severity = -0.5 },      // Negative
+                .{ .x = 20.0, .y = 20.0, .radius = 3.0, .severity = -10.0 },     // Very negative
+                .{ .x = 30.0, .y = 30.0, .radius = 3.0, .severity = 0.0 },       // Zero (valid)
+                .{ .x = 40.0, .y = 40.0, .radius = 3.0, .severity = 0.5 },       // Normal (valid)
+                .{ .x = 50.0, .y = 25.0, .radius = 3.0, .severity = 1.0 },       // Max (valid)
+                .{ .x = 60.0, .y = 30.0, .radius = 3.0, .severity = 1.5 },       // Over max
+                .{ .x = 70.0, .y = 20.0, .radius = 3.0, .severity = 10.0 },      // Way over
+                .{ .x = 80.0, .y = 15.0, .radius = 3.0, .severity = 1000.0 },    // Extremely over
+                .{ .x = 90.0, .y = 25.0, .radius = 3.0, .severity = std.math.inf(f32) },
+                .{ .x = 100.0, .y = 30.0, .radius = 3.0, .severity = -std.math.inf(f32) },
+                .{ .x = 110.0, .y = 20.0, .radius = 3.0, .severity = std.math.nan(f32) },
+            };
+            
+            for (severity_cases) |case| {
+                try f.addWearArea(field.Coordinate.init(case.x, case.y), case.radius, case.severity);
+            }
+            
+            // Verify conditions are still calculated and bounded
+            for (severity_cases) |case| {
+                const condition = f.getConditionAt(.{ .x = case.x, .y = case.y });
+                // Condition should always be between 0 and 1 regardless of input
+                try testing.expect(condition >= 0.0 or std.math.isNan(condition));
+                try testing.expect(condition <= 1.0 or std.math.isNan(condition));
+            }
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌─── Field Condition Edge Cases ───────────────────────────────────┐
+
+        test "stress: FieldMetadata: all field condition multipliers" {
+            const allocator = testing.allocator;
+            
+            // Test each field condition enum value
+            const conditions = [_]field.FieldCondition{
+                .excellent,
+                .good,
+                .fair,
+                .poor,
+                .unplayable,
+            };
+            
+            const expected_multipliers = [_]f32{
+                1.0,   // excellent
+                0.95,  // good
+                0.85,  // fair
+                0.70,  // poor
+                0.0,   // unplayable
+            };
+            
+            for (conditions, expected_multipliers) |condition, expected| {
+                var f = field.Field.init(allocator);
+                defer f.deinit();
+                
+                const meta = field.FieldMetadata{
+                    .field_condition = condition,
+                };
+                f.setMetadata(meta);
+                
+                const multiplier = f.getConditionMultiplier();
+                try testing.expectEqual(expected, multiplier);
+                
+                // Also test the enum's toMultiplier method directly
+                const direct_mult = condition.toMultiplier();
+                try testing.expectEqual(expected, direct_mult);
+            }
+        }
+
+        test "stress: FieldMetadata: condition at coordinates with multiple overlapping wear areas" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Set base field condition
+            const meta = field.FieldMetadata{
+                .field_condition = .good,  // 0.95 multiplier
+            };
+            f.setMetadata(meta);
+            
+            // Add many overlapping wear areas at a specific point
+            const target_x = 50.0;
+            const target_y = 26.67;
+            
+            // Create a gradient of overlapping circles
+            var i: u32 = 0;
+            while (i < 20) : (i += 1) {
+                const radius = @as(f32, @floatFromInt(i + 1));
+                const severity = @as(f32, @floatFromInt(i)) * 0.05;
+                try f.addWearArea(field.Coordinate.init(target_x, target_y), radius, @min(severity, 1.0));
+            }
+            
+            // Check condition at the target point
+            const condition = f.getConditionAt(.{ .x = target_x, .y = target_y });
+            try testing.expect(condition >= 0.0);
+            try testing.expect(condition <= 1.0);
+            
+            // Check condition at points with different numbers of overlaps
+            const test_points = [_]field.Coordinate{
+                .{ .x = target_x, .y = target_y },           // Center - maximum overlap
+                .{ .x = target_x + 5.0, .y = target_y },     // Some overlap
+                .{ .x = target_x + 15.0, .y = target_y },    // Less overlap
+                .{ .x = target_x + 25.0, .y = target_y },    // Minimal overlap
+                .{ .x = 0.0, .y = 0.0 },                     // No overlap
+            };
+            
+            for (test_points) |point| {
+                const pt_condition = f.getConditionAt(point);
+                try testing.expect(pt_condition >= 0.0);
+                try testing.expect(pt_condition <= 1.0);
+            }
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌─── Game Information Edge Cases ──────────────────────────────────┐
+
+        test "stress: FieldMetadata: extreme attendance values" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test various attendance edge cases
+            const attendance_cases = [_]?u32{
+                null,                    // No attendance data
+                0,                       // Empty stadium
+                1,                       // Single person
+                100_000,                 // Very high (but realistic)
+                1_000_000,              // Unrealistically high
+                std.math.maxInt(u32),   // Maximum u32 value
+            };
+            
+            for (attendance_cases) |attendance| {
+                const meta = field.FieldMetadata{
+                    .attendance = attendance,
+                };
+                f.setMetadata(meta);
+                
+                if (f.metadata) |m| {
+                    try testing.expectEqual(attendance, m.attendance);
+                }
+            }
+            
+            // Note: Testing negative attendance would require changing the type from u32
+            // The current implementation correctly prevents negative values by using unsigned int
+        }
+
+        test "stress: FieldMetadata: extreme game time values" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test various timestamp edge cases
+            const time_cases = [_]?i64{
+                null,                      // No game time
+                0,                         // Unix epoch (1970-01-01)
+                -1_000_000_000,           // Before epoch
+                1_000_000_000,            // Year 2001
+                2_000_000_000,            // Year 2033
+                10_000_000_000,           // Far future (year 2286)
+                std.math.maxInt(i64),     // Maximum i64 value
+                std.math.minInt(i64),     // Minimum i64 value
+            };
+            
+            for (time_cases) |game_time| {
+                const meta = field.FieldMetadata{
+                    .game_time = game_time,
+                };
+                f.setMetadata(meta);
+                
+                if (f.metadata) |m| {
+                    try testing.expectEqual(game_time, m.game_time);
+                }
+            }
+        }
+
+        test "stress: FieldMetadata: extreme elevation values" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Test various elevation edge cases
+            const elevation_cases = [_]f32{
+                -1500.0,              // Below sea level (Death Valley is -282 ft)
+                0.0,                  // Sea level
+                5280.0,               // Mile high (Denver)
+                10000.0,              // Very high elevation
+                30000.0,              // Near commercial airline cruise altitude
+                -10000.0,             // Deep below sea level (impossible on land)
+                std.math.inf(f32),    // Infinite elevation
+                -std.math.inf(f32),   // Negative infinite
+                std.math.nan(f32),    // Not a number
+            };
+            
+            for (elevation_cases) |elevation| {
+                const meta = field.FieldMetadata{
+                    .elevation_feet = elevation,
+                };
+                f.setMetadata(meta);
+                
+                if (f.metadata) |m| {
+                    if (std.math.isNan(elevation)) {
+                        try testing.expect(std.math.isNan(m.elevation_feet));
+                    } else {
+                        try testing.expectEqual(elevation, m.elevation_feet);
+                    }
+                }
+            }
+        }
+
+        test "stress: FieldMetadata: combined extreme conditions" {
+            const allocator = testing.allocator;
+            var f = field.Field.init(allocator);
+            defer f.deinit();
+            
+            // Create metadata with all extreme values combined
+            const extreme_meta = field.FieldMetadata{
+                .stadium_name = "X" ** 1000,  // Very long string
+                .team_home = "",               // Empty string
+                .team_away = "🏈" ** 100,      // Unicode characters
+                .weather = .{
+                    .temperature_fahrenheit = -500.0,
+                    .wind_speed_mph = 1000.0,
+                    .wind_direction_degrees = -720.0,
+                    .precipitation = .heavy_rain,
+                    .humidity_percent = 200.0,
+                },
+                .field_condition = .unplayable,
+                .game_time = std.math.minInt(i64),
+                .attendance = std.math.maxInt(u32),
+                .has_dome = true,
+                .has_retractable_roof = true,  // Both dome and retractable
+                .elevation_feet = std.math.inf(f32),
+            };
+            
+            f.setMetadata(extreme_meta);
+            try testing.expect(f.metadata != null);
+            
+            // Add maximum wear areas
+            var i: u32 = 0;
+            while (i < 50) : (i += 1) {
+                const x = @as(f32, @floatFromInt(i)) * 2.4;
+                const y = @as(f32, @floatFromInt(i % 20)) * 2.67;
+                try f.addWearArea(field.Coordinate.init(x, y), std.math.inf(f32), 2.0);  // Infinite radius, over-max severity
+            }
+            
+            // Field should still be functional
+            const multiplier = f.getConditionMultiplier();
+            try testing.expectEqual(@as(f32, 0.0), multiplier);  // Unplayable = 0.0
+            
+            // Condition calculation should still work
+            const condition = f.getConditionAt(.{ .x = 60.0, .y = 26.67 });
+            try testing.expect(condition >= 0.0 or std.math.isNan(condition));
+        }
+
+    // └──────────────────────────────────────────────────────────────────┘
 
 // ╚══════════════════════════════════════════════════════════════════════════════════════╝

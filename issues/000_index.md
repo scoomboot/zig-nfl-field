@@ -26,8 +26,8 @@ Implement the foundational NFL field geometry and position tracking library foll
 ### Phase 2: Core Field Structure
 - [x] ✅ [#010](010_design_field_struct.md): Design Field struct layout → *depends on: #007*
 - [x] ✅ [#011](011_implement_field_init.md): Implement field initialization → *depends on: #010*
-- [ ] 🟡 [#012](012_add_boundary_checking.md): Add field boundary checking → *depends on: #010*
-- [ ] 🟡 [#013](013_create_field_metadata.md): Create field metadata storage → *depends on: #010*
+- [x] ✅ [#012](012_add_boundary_checking.md): Add field boundary checking → *depends on: #010*
+- [x] ✅ [#013](013_create_field_metadata.md): Create field metadata storage → *depends on: #010*
 - [ ] 🔵 [#045](045_add_fieldbuilder_endzone_config.md): Add setEndZoneLength() to FieldBuilder → *depends on: #011*
 
 ### Phase 3: Yard Lines & Hash Marks
